@@ -75,6 +75,9 @@ app.get('/auth/google/callback',
 
 app.post('/auth/logout', (req, res) => req.logout(() => res.json({ ok: true })))
 
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => res.json({ ok: true, service: 'resolve-api' }))
+
 // ── requireAuth middleware ────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
     if (!req.user) return res.status(401).json({ error: 'unauthenticated' })
