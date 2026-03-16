@@ -6,7 +6,7 @@ import SettingsPanel from "./components/SettingsPanel.vue";
 import AuthScreen from "./components/AuthScreen.vue";
 import { useClock } from "./composables/useClock.js";
 import { useTheme } from "./composables/useTheme.js";
-import { user, authLoading, loadUser } from "./store/auth.js";
+import { user, authLoading, loadUser, logout } from "./store/auth.js";
 import { syncAll } from "./store/index.js";
 
 const { time: clockTime } = useClock();
@@ -28,6 +28,15 @@ function onDateSelect(dateKey, isPast) {
 const settingsOpen = ref(false);
 const settingsEl = ref(null);
 
+// ── Profile dropdown ─────────────────────────────────────────────────────────
+const profileOpen = ref(false);
+const profileEl = ref(null);
+
+async function handleLogout() {
+  profileOpen.value = false;
+  await logout();
+}
+
 function toggleSettings() {
   settingsOpen.value = !settingsOpen.value;
 }
@@ -35,6 +44,9 @@ function toggleSettings() {
 function closeOnOutsideClick(e) {
   if (settingsEl.value && !settingsEl.value.contains(e.target)) {
     settingsOpen.value = false;
+  }
+  if (profileEl.value && !profileEl.value.contains(e.target)) {
+    profileOpen.value = false;
   }
 }
 
@@ -94,6 +106,73 @@ onUnmounted(() => {
         aria-label="Current time"
         >{{ clockTime }}</span
       >
+
+      <!-- Profile button + dropdown -->
+      <div class="relative" ref="profileEl">
+        <button
+          @click="profileOpen = !profileOpen"
+          class="flex items-center gap-2 px-2 py-1 rounded-xl border border-(--border)
+                 bg-(--surface2) hover:bg-(--surface3) hover:border-(--accent)
+                 transition-colors focus:outline-none focus:ring-2 focus:ring-(--accent)"
+          :aria-expanded="profileOpen"
+          aria-label="Account menu"
+        >
+          <img
+            v-if="user?.avatar"
+            :src="user.avatar"
+            :alt="user.name"
+            class="w-7 h-7 rounded-full object-cover shrink-0"
+            referrerpolicy="no-referrer"
+          />
+          <span v-else class="w-7 h-7 rounded-full bg-(--accent) flex items-center justify-center text-xs font-bold text-(--bg) shrink-0">
+            {{ user?.name?.[0]?.toUpperCase() }}
+          </span>
+          <span class="text-xs font-semibold text-(--text) max-w-28 truncate hidden sm:block">
+            {{ user?.name }}
+          </span>
+        </button>
+
+        <Transition name="slide-down">
+          <div
+            v-if="profileOpen"
+            class="absolute right-0 top-full mt-2 w-52 rounded-xl border border-(--border)
+                   bg-(--surface) z-20 overflow-hidden"
+            style="box-shadow: var(--shadow)"
+          >
+            <!-- User info -->
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-(--border)">
+              <img
+                v-if="user?.avatar"
+                :src="user.avatar"
+                :alt="user.name"
+                class="w-9 h-9 rounded-full object-cover shrink-0"
+                referrerpolicy="no-referrer"
+              />
+              <span v-else class="w-9 h-9 rounded-full bg-(--accent) flex items-center justify-center text-sm font-bold text-(--bg) shrink-0">
+                {{ user?.name?.[0]?.toUpperCase() }}
+              </span>
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-(--text) truncate">{{ user?.name }}</p>
+                <p class="text-xs text-(--text-muted) truncate">{{ user?.email }}</p>
+              </div>
+            </div>
+            <!-- Sign out -->
+            <button
+              @click="handleLogout"
+              class="w-full flex items-center gap-2 px-4 py-3 text-sm text-(--text)
+                     hover:bg-(--surface2) transition-colors text-left"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Sign out
+            </button>
+          </div>
+        </Transition>
+      </div>
 
       <!-- Settings button + dropdown panel -->
       <div class="relative" ref="settingsEl">
