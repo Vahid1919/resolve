@@ -1,943 +1,357 @@
-<template>
-  <div class="panel" :class="{ 'panel-readonly': readOnly }">
-    <div v-if="!dateKey" class="panel-empty">
-      <p class="panel-empty-text">Select a day to plan your tasks</p>
-    </div>
-
-    <template v-else>
-      <!-- Header -->
-      <div class="panel-head">
-        <div>
-          <p class="panel-weekday" v-if="viewMode === 'day'">{{ weekday }}</p>
-          <h2 class="panel-date" v-if="viewMode === 'day'">{{ dayMonth }}</h2>
-          <h2 class="panel-date" v-else>{{ weekRangeLabel }}</h2>
-        </div>
-        <div class="panel-head-actions">
-          <span v-if="readOnly" class="readonly-badge">Past</span>
-          <div class="view-toggle">
-            <button
-              class="view-btn"
-              :class="{ 'view-btn-active': viewMode === 'day' }"
-              @click="viewMode = 'day'"
-            >
-              Day
-            </button>
-            <button
-              class="view-btn"
-              :class="{ 'view-btn-active': viewMode === 'week' }"
-              @click="viewMode = 'week'"
-            >
-              Week
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Area filter bar -->
-      <div v-if="areas.length" class="area-bar">
-        <div class="area-filters">
-          <button
-            class="area-pill"
-            :class="{ 'area-pill-active': activeAreaFilter === null }"
-            @click="activeAreaFilter = null"
-          >
-            All
-          </button>
-          <button
-            v-for="a in areas"
-            :key="a.id"
-            class="area-pill"
-            :class="{ 'area-pill-active': activeAreaFilter === a.id }"
-            :style="
-              activeAreaFilter === a.id
-                ? { background: a.color, borderColor: a.color, color: '#fff' }
-                : {
-                    background: 'transparent',
-                    borderColor: a.color,
-                    color: '#fff',
-                  }
-            "
-            @click="activeAreaFilter = activeAreaFilter === a.id ? null : a.id"
-          >
-            {{ a.name }}
-          </button>
-        </div>
-      </div>
-
-      <!-- ── WEEK VIEW ─────────────────────────────────── -->
-      <template v-if="viewMode === 'week'">
-        <div class="week-list">
-          <div
-            v-for="day in weekDays"
-            :key="day.key"
-            class="week-day"
-            :class="{
-              'week-today': day.isToday,
-              'week-past': day.isPast,
-              'week-selected': day.isSelected,
-            }"
-          >
-            <div class="week-day-head" @click="goToDay(day)">
-              <span class="week-day-name">{{ day.dayName }}</span>
-              <span class="week-day-date"
-                >{{ day.monthShort }} {{ day.dateNum }}</span
-              >
-              <span class="week-day-score" v-if="day.tasksTotal"
-                >{{ day.tasksDone }}/{{ day.tasksTotal }}</span
-              >
-              <span class="week-habit-pips" v-if="day.habits.length">
-                <span
-                  v-for="h in day.habits.slice(0, 6)"
-                  :key="h.id"
-                  class="week-pip"
-                  :class="{ 'pip-done': isHabitDone(day.key, h.id) }"
-                  :style="h.areaId ? { background: areaColor(h.areaId) } : {}"
-                ></span>
-              </span>
-            </div>
-            <div
-              class="week-task-list"
-              v-if="day.tasks.length || day.doneTasks.length"
-            >
-              <div
-                v-for="t in day.doneTasks"
-                :key="t.id"
-                class="week-task-row week-task-done"
-              >
-                <span
-                  class="week-task-pip"
-                  :style="t.areaId ? { background: areaColor(t.areaId) } : {}"
-                ></span>
-                <span class="week-task-text">{{ t.text }}</span>
-              </div>
-              <div v-for="t in day.tasks" :key="t.id" class="week-task-row">
-                <span
-                  class="week-task-pip"
-                  :style="t.areaId ? { background: areaColor(t.areaId) } : {}"
-                ></span>
-                <span class="week-task-text">{{ t.text }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </template>
-
-      <!-- ── DAY VIEW ──────────────────────────────────── -->
-      <template v-else>
-        <!-- ── PAST / READ-ONLY VIEW ─────────────────────── -->
-        <template v-if="readOnly">
-          <div class="section">
-            <div class="section-head">
-              <span class="section-title">Tasks</span>
-            </div>
-            <div class="task-list">
-              <div
-                v-for="task in completedTasks"
-                :key="task.id"
-                class="task-row"
-              >
-                <span class="status-badge badge-done">done</span>
-                <span class="item-text item-text-done">{{ task.text }}</span>
-                <span
-                  v-if="task.areaId"
-                  class="area-chip"
-                  :style="{
-                    borderColor: areaColor(task.areaId),
-                    color: areaColor(task.areaId),
-                  }"
-                  >{{ areaName(task.areaId) }}</span
-                >
-              </div>
-              <div v-for="task in activeTasks" :key="task.id" class="task-row">
-                <span class="status-badge badge-pending">pending</span>
-                <span class="item-text">{{ task.text }}</span>
-                <span
-                  v-if="task.areaId"
-                  class="area-chip"
-                  :style="{
-                    borderColor: areaColor(task.areaId),
-                    color: areaColor(task.areaId),
-                  }"
-                  >{{ areaName(task.areaId) }}</span
-                >
-              </div>
-            </div>
-            <p
-              v-if="!completedTasks.length && !activeTasks.length"
-              class="empty-hint"
-            >
-              No tasks were added.
-            </p>
-          </div>
-
-          <div class="section">
-            <div class="section-head">
-              <span class="section-title">Habits</span>
-            </div>
-            <div class="task-list">
-              <div v-for="habit in dateHabits" :key="habit.id" class="task-row">
-                <span
-                  class="status-badge"
-                  :class="
-                    isHabitDone(dateKey, habit.id)
-                      ? 'badge-done'
-                      : 'badge-pending'
-                  "
-                >
-                  {{ isHabitDone(dateKey, habit.id) ? "done" : "pending" }}
-                </span>
-                <span
-                  class="item-text"
-                  :class="{ 'item-text-done': isHabitDone(dateKey, habit.id) }"
-                  >{{ habit.text }}</span
-                >
-                <span class="cadence-badge">{{
-                  habitCadenceLabel(habit)
-                }}</span>
-                <span
-                  v-if="habit.areaId"
-                  class="area-chip"
-                  :style="{
-                    borderColor: areaColor(habit.areaId),
-                    color: areaColor(habit.areaId),
-                  }"
-                  >{{ areaName(habit.areaId) }}</span
-                >
-              </div>
-            </div>
-            <p v-if="!dateHabits.length" class="empty-hint">
-              No habits were scheduled.
-            </p>
-          </div>
-        </template>
-
-        <!-- ── ACTIVE VIEW ───────────────────────────────── -->
-        <template v-else>
-          <!-- TASKS -->
-          <div class="section">
-            <div class="section-head">
-              <span class="section-title">Tasks</span>
-              <button
-                class="add-toggle-btn"
-                :class="{ 'add-toggle-open': addingType === 'task' }"
-                @click="toggleAddForm('task')"
-              >
-                <svg viewBox="0 0 14 14" fill="none">
-                  <path
-                    d="M7 1v12M1 7h12"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <Transition name="slide-down">
-              <div v-if="addingType === 'task'" class="add-form">
-                <div v-if="areas.length" class="area-picker">
-                  <button
-                    class="area-pick-btn"
-                    :class="{ 'area-pick-none': newAreaId === null }"
-                    @click="newAreaId = null"
-                  >
-                    None
-                  </button>
-                  <button
-                    v-for="a in areas"
-                    :key="a.id"
-                    class="area-pick-btn"
-                    :class="{ 'area-pick-active': newAreaId === a.id }"
-                    :style="{
-                      background: a.color,
-                      borderColor: a.color,
-                      color: '#fff',
-                    }"
-                    @click="newAreaId = a.id"
-                  >
-                    {{ a.name }}
-                  </button>
-                </div>
-                <div class="suggestions">
-                  <button
-                    v-for="s in taskSuggestions"
-                    :key="s"
-                    class="suggestion-pill"
-                    @click="quickAdd('task', s)"
-                  >
-                    {{ s }}
-                  </button>
-                </div>
-                <div class="add-row">
-                  <input
-                    ref="taskInputEl"
-                    class="add-input"
-                    v-model="newText"
-                    placeholder="Custom task..."
-                    maxlength="120"
-                    @keydown.enter="confirmAdd"
-                    @keydown.esc="cancelAdd"
-                  />
-                  <button class="add-btn" @click="confirmAdd">Add</button>
-                </div>
-              </div>
-            </Transition>
-
-            <TransitionGroup name="task-item" tag="div" class="task-list">
-              <div
-                v-for="task in activeTasks"
-                :key="task.id"
-                class="task-row"
-                @contextmenu.prevent="openTagMenu('task', task.id, $event)"
-              >
-                <button class="check-btn" @click="completeTask(task.id)">
-                  <svg viewBox="0 0 12 10" fill="none">
-                    <path
-                      d="M1 5l3.5 3.5L11 1"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </button>
-                <span
-                  v-if="task.areaId"
-                  class="area-dot"
-                  :style="{ background: areaColor(task.areaId) }"
-                ></span>
-                <span class="item-text">{{ task.text }}</span>
-                <button class="del-btn" @click="removeTodo(dateKey, task.id)">
-                  <svg viewBox="0 0 14 14" fill="none">
-                    <path
-                      d="M2 2l10 10M12 2L2 12"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      stroke-linecap="round"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </TransitionGroup>
-            <div v-if="completedTasks.length" class="task-list task-list-done">
-              <div
-                v-for="item in completedTasks"
-                :key="item.id"
-                class="task-row task-row-done"
-              >
-                <button
-                  class="check-btn check-checked"
-                  @click="unarchiveTodo(dateKey, item.id)"
-                  title="Mark as not done"
-                >
-                  <svg viewBox="0 0 12 10" fill="none">
-                    <path
-                      d="M1 5l3.5 3.5L11 1"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </button>
-                <span
-                  v-if="item.areaId"
-                  class="area-dot"
-                  :style="{ background: areaColor(item.areaId) }"
-                ></span>
-                <span class="item-text item-text-done">{{ item.text }}</span>
-                <button
-                  class="del-btn"
-                  @click="removeCompleted(dateKey, item.id)"
-                >
-                  <svg viewBox="0 0 14 14" fill="none">
-                    <path
-                      d="M2 2l10 10M12 2L2 12"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      stroke-linecap="round"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <p
-              v-if="!activeTasks.length && !completedTasks.length"
-              class="empty-hint"
-            >
-              No tasks yet.
-            </p>
-          </div>
-
-          <!-- HABITS -->
-          <div class="section">
-            <div class="section-head">
-              <span class="section-title">Habits</span>
-              <button
-                class="add-toggle-btn"
-                :class="{ 'add-toggle-open': addingType === 'habit' }"
-                @click="toggleAddForm('habit')"
-              >
-                <svg viewBox="0 0 14 14" fill="none">
-                  <path
-                    d="M7 1v12M1 7h12"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <Transition name="slide-down">
-              <div v-if="addingType === 'habit'" class="add-form">
-                <div class="cadence-row">
-                  <button
-                    v-for="c in CADENCES"
-                    :key="c.value"
-                    class="cadence-opt"
-                    :class="{ 'cadence-opt-active': newCadence === c.value }"
-                    @click="newCadence = c.value"
-                  >
-                    {{ c.label }}
-                  </button>
-                </div>
-                <div v-if="newCadence === 'custom'" class="day-picker">
-                  <button
-                    v-for="(d, i) in DAY_LABELS"
-                    :key="i"
-                    class="day-btn"
-                    :class="{ 'day-btn-active': customDays.includes(i) }"
-                    @click="toggleCustomDay(i)"
-                  >
-                    {{ d }}
-                  </button>
-                </div>
-                <div v-if="areas.length" class="area-picker">
-                  <button
-                    class="area-pick-btn"
-                    :class="{ 'area-pick-none': newAreaId === null }"
-                    @click="newAreaId = null"
-                  >
-                    None
-                  </button>
-                  <button
-                    v-for="a in areas"
-                    :key="a.id"
-                    class="area-pick-btn"
-                    :class="{ 'area-pick-active': newAreaId === a.id }"
-                    :style="{
-                      background: a.color,
-                      borderColor: a.color,
-                      color: '#fff',
-                    }"
-                    @click="newAreaId = a.id"
-                  >
-                    {{ a.name }}
-                  </button>
-                </div>
-                <div class="suggestions">
-                  <button
-                    v-for="s in habitSuggestions"
-                    :key="s"
-                    class="suggestion-pill"
-                    @click="quickAdd('habit', s)"
-                  >
-                    {{ s }}
-                  </button>
-                </div>
-                <div class="add-row">
-                  <input
-                    ref="habitInputEl"
-                    class="add-input"
-                    v-model="newText"
-                    placeholder="Custom habit..."
-                    maxlength="120"
-                    @keydown.enter="confirmAdd"
-                    @keydown.esc="cancelAdd"
-                  />
-                  <button class="add-btn" @click="confirmAdd">Add</button>
-                </div>
-              </div>
-            </Transition>
-
-            <TransitionGroup name="task-item" tag="div" class="task-list">
-              <div
-                v-for="habit in dateHabits"
-                :key="habit.id"
-                class="task-row"
-                :class="{
-                  'check-checked-row': isHabitDone(dateKey, habit.id),
-                }"
-                @contextmenu.prevent="openTagMenu('habit', habit.id, $event)"
-              >
-                <button
-                  class="check-btn"
-                  :class="{ 'check-checked': isHabitDone(dateKey, habit.id) }"
-                  @click="toggleHabit(habit.id)"
-                >
-                  <svg viewBox="0 0 12 10" fill="none">
-                    <path
-                      d="M1 5l3.5 3.5L11 1"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </button>
-                <div class="item-col">
-                  <span
-                    v-if="habit.areaId"
-                    class="area-dot"
-                    :style="{ background: areaColor(habit.areaId) }"
-                  ></span>
-                  <span
-                    class="item-text"
-                    :class="{
-                      'item-text-done': isHabitDone(dateKey, habit.id),
-                    }"
-                    >{{ habit.text }}</span
-                  >
-                </div>
-                <span class="cadence-badge">{{
-                  habitCadenceLabel(habit)
-                }}</span>
-                <div class="del-wrap">
-                  <button
-                    class="del-btn"
-                    @click.stop="openHabitDeleteMenu(habit.id)"
-                  >
-                    <svg viewBox="0 0 14 14" fill="none">
-                      <path
-                        d="M2 2l10 10M12 2L2 12"
-                        stroke="currentColor"
-                        stroke-width="1.8"
-                        stroke-linecap="round"
-                      />
-                    </svg>
-                  </button>
-                  <Transition name="fade">
-                    <div
-                      v-if="habitDeleteMenuId === habit.id"
-                      class="del-popover"
-                      @click.stop
-                    >
-                      <button
-                        class="del-pop-btn"
-                        @click="deleteHabitThisDay(habit.id)"
-                      >
-                        This day only
-                      </button>
-                      <button
-                        class="del-pop-btn del-pop-danger"
-                        @click="deleteHabitFuture(habit.id)"
-                      >
-                        This day &amp; all future
-                      </button>
-                    </div>
-                  </Transition>
-                </div>
-              </div>
-            </TransitionGroup>
-            <p v-if="!dateHabits.length" class="empty-hint">No habits yet.</p>
-          </div>
-        </template>
-      </template>
-    </template>
-  </div>
-
-  <!-- Toast notification -->
-  <Teleport to="body">
-    <Transition name="toast">
-      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
-    </Transition>
-  </Teleport>
-
-  <!-- Right-click area context menu -->
-  <Teleport to="body">
-    <div
-      v-if="tagMenu"
-      class="ctx-menu"
-      :style="{ left: tagMenu.x + 'px', top: tagMenu.y + 'px' }"
-      @click.stop
-    >
-      <button class="ctx-menu-item ctx-menu-none" @click="applyTag(null)">
-        No area
-      </button>
-      <button
-        v-for="a in areas"
-        :key="a.id"
-        class="ctx-menu-item"
-        @click="applyTag(a.id)"
-      >
-        <span class="ctx-area-dot" :style="{ background: a.color }"></span>
-        {{ a.name }}
-      </button>
-    </div>
-  </Teleport>
-</template>
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
-import { useTodos } from "../composables/useTodos.js";
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import TaskSection  from './TaskSection.vue'
+import HabitSection from './HabitSection.vue'
+import { useStore } from '../store/index.js'
 
 const props = defineProps({
-  dateKey: { type: String, default: null },
+  dateKey:  { type: String,  default: null  },
   readOnly: { type: Boolean, default: false },
-});
+})
 
-const emit = defineEmits(["selectDay"]);
+const emit = defineEmits(['select-day'])
 
 const {
-  getTodos,
-  addTodo,
-  removeTodo,
-  archiveTodo,
-  getCompleted,
-  removeCompleted,
-  unarchiveTodo,
-  addHabitDef,
-  addHabitException,
-  removeHabitDefFromDate,
-  getHabitsForDate,
+  areas, areaColor, areaName,
+  getTasks, getCompleted, getHabitsForDate,
+  setTaskArea, setHabitArea,
   isHabitDone,
-  completeHabit,
-  uncompleteHabit,
-  setTodoArea,
-  setHabitArea,
-  areas,
-} = useTodos();
+} = useStore()
 
-// ── View mode ──────────────────────────────────
-const viewMode = ref("day");
+// ── View mode ─────────────────────────────────────────────────────────────────
+const viewMode = ref('day')
 
-function completeTask(id) {
-  archiveTodo(props.dateKey, id);
-}
+// ── Area filter ───────────────────────────────────────────────────────────────
+const activeAreaFilter = ref(null)
 
-// ── Habit toggle ───────────────────────────────────────
-function toggleHabit(id) {
-  if (!props.dateKey) return;
-  if (isHabitDone(props.dateKey, id)) uncompleteHabit(props.dateKey, id);
-  else completeHabit(props.dateKey, id);
-}
+// ── Date display ──────────────────────────────────────────────────────────────
+const weekday = computed(() => {
+  if (!props.dateKey) return ''
+  const [y, m, d] = props.dateKey.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long' })
+})
 
-// ── Habit delete popover ───────────────────────────────
-const habitDeleteMenuId = ref(null);
+const dayMonth = computed(() => {
+  if (!props.dateKey) return ''
+  const [y, m, d] = props.dateKey.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+  })
+})
 
-function openHabitDeleteMenu(id) {
-  habitDeleteMenuId.value = habitDeleteMenuId.value === id ? null : id;
-}
-function deleteHabitThisDay(id) {
-  addHabitException(props.dateKey, id);
-  habitDeleteMenuId.value = null;
-}
-function deleteHabitFuture(id) {
-  removeHabitDefFromDate(id, props.dateKey);
-  habitDeleteMenuId.value = null;
-}
+// ── Week view data ────────────────────────────────────────────────────────────
+const MON_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
-// ── Inline area tag menu ──────────────────────────────
-const tagMenu = ref(null); // { type: 'task'|'habit', id }
-
-function openTagMenu(type, id, event) {
-  if (tagMenu.value?.type === type && tagMenu.value?.id === id) {
-    tagMenu.value = null;
-    return;
-  }
-  // Clamp so menu doesn't go off-screen
-  const x = Math.min(event.clientX, window.innerWidth - 160);
-  const y = Math.min(
-    event.clientY,
-    window.innerHeight - 40 * (areas.length + 2),
-  );
-  tagMenu.value = { type, id, x, y };
-}
-
-function applyTag(areaId) {
-  if (!tagMenu.value) return;
-  if (tagMenu.value.type === "task")
-    setTodoArea(props.dateKey, tagMenu.value.id, areaId);
-  else setHabitArea(tagMenu.value.id, areaId);
-  tagMenu.value = null;
-}
-
-function closeAllMenus() {
-  habitDeleteMenuId.value = null;
-  tagMenu.value = null;
-}
-onMounted(() => document.addEventListener("click", closeAllMenus));
-onUnmounted(() => document.removeEventListener("click", closeAllMenus));
-
-// ── Area filter ───────────────────────────────────────
-const activeAreaFilter = ref(null);
-
-function areaColor(id) {
-  return areas.find((a) => a.id === id)?.color || "transparent";
-}
-function areaName(id) {
-  return areas.find((a) => a.id === id)?.name || "";
-}
-
-// ── Lists ──────────────────────────────────────────────
-const activeTasks = computed(() => {
-  const all = props.dateKey ? getTodos(props.dateKey) : [];
-  return activeAreaFilter.value === null
-    ? all
-    : all.filter((t) => t.areaId === activeAreaFilter.value);
-});
-const completedTasks = computed(() =>
-  props.dateKey ? getCompleted(props.dateKey) : [],
-);
-const dateHabits = computed(() => {
-  const all = props.dateKey ? getHabitsForDate(props.dateKey) : [];
-  return activeAreaFilter.value === null
-    ? all
-    : all.filter((h) => h.areaId === activeAreaFilter.value);
-});
-
-function habitCadenceLabel(habit) {
-  if (habit.cadence === "daily") return "daily";
-  if (habit.cadence === "weekly") return "weekly";
-  if (habit.cadence === "custom" && habit.customDays?.length) {
-    const n = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-    return habit.customDays.map((d) => n[d]).join(" ");
-  }
-  return habit.cadence || "daily";
-}
-
-// ── Toast notification ────────────────────────────────
-const toastMsg = ref(null);
-let toastTimer = null;
-
-watch(
-  () =>
-    props.dateKey
-      ? getTodos(props.dateKey).length + getHabitsForDate(props.dateKey).length
-      : 0,
-  (total) => {
-    if (total > 5 && !props.readOnly) {
-      clearTimeout(toastTimer);
-      toastMsg.value = `You have ${total} items today — consider trimming your list.`;
-      toastTimer = setTimeout(() => {
-        toastMsg.value = null;
-      }, 4000);
-    }
-  },
-);
-
-// ── Week view ────────────────────────────────────────────
-const MON_SHORT = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function _dk(dt) {
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+function makeDateKey(dt) {
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 
 const weekDays = computed(() => {
-  if (!props.dateKey) return [];
-  const [y, m, d] = props.dateKey.split("-").map(Number);
-  const sel = new Date(y, m - 1, d);
-  const dow = sel.getDay();
-  const mon = new Date(sel);
-  mon.setDate(sel.getDate() - (dow === 0 ? 6 : dow - 1));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  if (!props.dateKey) return []
+  const [y, m, d] = props.dateKey.split('-').map(Number)
+  const sel  = new Date(y, m - 1, d)
+  const dow  = sel.getDay()
+  const mon  = new Date(sel)
+  mon.setDate(sel.getDate() - (dow === 0 ? 6 : dow - 1))
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
 
   return Array.from({ length: 7 }, (_, i) => {
-    const dt = new Date(mon);
-    dt.setDate(mon.getDate() + i);
-    const dk = _dk(dt);
-    const isPast = dt < today;
-    const isToday = dt.getTime() === today.getTime();
-    const allTasks = getTodos(dk);
-    const doneTasks = getCompleted(dk);
-    const allHabits = getHabitsForDate(dk);
-    const filt = activeAreaFilter.value;
-    const tasks =
-      filt === null ? allTasks : allTasks.filter((t) => t.areaId === filt);
-    const done =
-      filt === null ? doneTasks : doneTasks.filter((t) => t.areaId === filt);
-    const habits =
-      filt === null ? allHabits : allHabits.filter((h) => h.areaId === filt);
+    const dt  = new Date(mon)
+    dt.setDate(mon.getDate() + i)
+    const dk  = makeDateKey(dt)
+    const filt = activeAreaFilter.value
+
+    const allTasks  = getTasks(dk)  || []
+    const doneTasks = getCompleted(dk) || []
+    const allHabits = getHabitsForDate(dk) || []
+
+    const tasks  = filt === null ? allTasks  : allTasks.filter(t => t.areaId === filt)
+    const done   = filt === null ? doneTasks : doneTasks.filter(t => t.areaId === filt)
+    const habits = filt === null ? allHabits : allHabits.filter(h => h.areaId === filt)
+
     return {
-      key: dk,
-      dayName: DAY_SHORT[dt.getDay()],
-      dateNum: dt.getDate(),
+      key:        dk,
+      dayName:    DAY_SHORT[dt.getDay()],
+      dateNum:    dt.getDate(),
       monthShort: MON_SHORT[dt.getMonth()],
-      isToday,
-      isPast,
+      isToday:    dt.getTime() === today.getTime(),
+      isPast:     dt < today,
       isSelected: dk === props.dateKey,
       tasks,
       doneTasks: done,
       habits,
-      tasksDone: done.length,
+      tasksDone:  done.length,
       tasksTotal: tasks.length + done.length,
-    };
-  });
-});
+    }
+  })
+})
 
 const weekRangeLabel = computed(() => {
-  if (!weekDays.value.length) return "";
-  const f = weekDays.value[0];
-  const l = weekDays.value[6];
-  return `${f.monthShort} ${f.dateNum} – ${l.monthShort} ${l.dateNum}`;
-});
+  if (!weekDays.value.length) return ''
+  const f = weekDays.value[0]
+  const l = weekDays.value[6]
+  return `${f.monthShort} ${f.dateNum} – ${l.monthShort} ${l.dateNum}`
+})
 
 function goToDay(day) {
-  emit("selectDay", day.key, day.isPast);
-  viewMode.value = "day";
+  emit('select-day', day.key, day.isPast)
+  viewMode.value = 'day'
 }
 
-// ── Cadence & day picker ───────────────────────────────
-const CADENCES = [
-  { value: "daily", label: "Daily" },
-  { value: "weekly", label: "Weekly" },
-  { value: "custom", label: "Custom" },
-];
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const newCadence = ref("daily");
-const customDays = ref([]);
+// ── Toast notification ────────────────────────────────────────────────────────
+const toastMsg = ref(null)
+let toastTimer = null
 
-function toggleCustomDay(i) {
-  const idx = customDays.value.indexOf(i);
-  if (idx === -1) customDays.value.push(i);
-  else customDays.value.splice(idx, 1);
-}
+watch(
+  () => props.dateKey
+    ? (getTasks(props.dateKey)?.length || 0) + (getHabitsForDate(props.dateKey)?.length || 0)
+    : 0,
+  (total) => {
+    if (total > 5 && !props.readOnly) {
+      clearTimeout(toastTimer)
+      toastMsg.value = `You have ${total} items today — consider trimming your list.`
+      toastTimer = setTimeout(() => { toastMsg.value = null }, 4000)
+    }
+  },
+)
 
-// ── Add form ───────────────────────────────────────────
-const TASK_POOL = [
-  "Review emails",
-  "Go for a walk",
-  "Read for 20 min",
-  "Plan tomorrow",
-  "Call a friend",
-  "Clean workspace",
-  "Write in journal",
-  "Grocery run",
-  "Study for 1 hour",
-  "Drink 2L water",
-  "Stretch for 10 min",
-  "Backup files",
-  "Respond to messages",
-  "Organize desktop",
-  "Review notes",
-];
-const HABIT_POOL = [
-  "Morning meditation",
-  "Evening walk",
-  "Cold shower",
-  "No phone first hour",
-  "Sleep by 11pm",
-  "Gratitude list",
-  "Read 10 pages",
-  "10 min stretch",
-  "Cook at home",
-  "No social media",
-  "7+ hours sleep",
-  "Vitamins",
-  "No sugar",
-  "10k steps",
-  "Journaling",
-];
+// ── Right-click area context menu ─────────────────────────────────────────────
+const tagMenu = ref(null)
 
-const addingType = ref(null);
-const newText = ref("");
-const newAreaId = ref(null);
-const taskSuggestions = ref([]);
-const habitSuggestions = ref([]);
-const taskInputEl = ref(null);
-const habitInputEl = ref(null);
-
-function _sample(arr, n) {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
+function openTagMenu(type, id, event) {
+  if (tagMenu.value?.type === type && tagMenu.value?.id === id) {
+    tagMenu.value = null
+    return
   }
-  return copy.slice(0, n);
+  const x = Math.min(event.clientX, window.innerWidth - 160)
+  const y = Math.min(event.clientY, window.innerHeight - 40 * (areas.length + 2))
+  tagMenu.value = { type, id, x, y }
 }
 
-function toggleAddForm(type) {
-  if (addingType.value === type) {
-    cancelAdd();
-    return;
-  }
-  addingType.value = type;
-  newText.value = "";
-  newAreaId.value = null;
-  taskSuggestions.value = _sample(TASK_POOL, 4);
-  habitSuggestions.value = _sample(HABIT_POOL, 4);
-  nextTick(() => {
-    if (type === "task") taskInputEl.value?.focus();
-    else habitInputEl.value?.focus();
-  });
+function applyTag(areaId) {
+  if (!tagMenu.value) return
+  if (tagMenu.value.type === 'task') setTaskArea(props.dateKey, tagMenu.value.id, areaId)
+  else setHabitArea(tagMenu.value.id, areaId)
+  tagMenu.value = null
 }
 
-function cancelAdd() {
-  addingType.value = null;
-  newText.value = "";
-  newCadence.value = "daily";
-  customDays.value = [];
-  newAreaId.value = null;
-}
+function closeAllMenus() { tagMenu.value = null }
 
-function confirmAdd() {
-  if (!newText.value.trim() || !addingType.value || !props.dateKey) return;
-  if (addingType.value === "task")
-    addTodo(props.dateKey, newText.value, newAreaId.value);
-  else
-    addHabitDef(
-      newText.value,
-      newCadence.value,
-      customDays.value,
-      props.dateKey,
-      newAreaId.value,
-    );
-  cancelAdd();
-}
-
-function quickAdd(type, text) {
-  if (!props.dateKey) return;
-  if (type === "task") addTodo(props.dateKey, text, newAreaId.value);
-  else
-    addHabitDef(
-      text,
-      newCadence.value,
-      customDays.value,
-      props.dateKey,
-      newAreaId.value,
-    );
-  cancelAdd();
-}
-
-// ── Date display ───────────────────────────────────────
-const weekday = computed(() => {
-  if (!props.dateKey) return "";
-  const [y, m, d] = props.dateKey.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "long" });
-});
-
-const dayMonth = computed(() => {
-  if (!props.dateKey) return "";
-  const [y, m, d] = props.dateKey.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-});
+onMounted(() => document.addEventListener('click', closeAllMenus))
+onUnmounted(() => document.removeEventListener('click', closeAllMenus))
 </script>
+
+<template>
+  <!-- Empty state (no date selected) -->
+  <div v-if="!dateKey" class="flex-1 flex items-center justify-center text-[var(--text-muted)] text-sm">
+    Select a day to plan your tasks
+  </div>
+
+  <div
+    v-else
+    class="flex-1 bg-[var(--surface)] border border-[var(--border)] rounded-2xl
+           flex flex-col min-h-0 max-h-[calc(100vh-120px)] overflow-hidden animate-slide-up"
+    :class="{ 'opacity-85': readOnly }"
+    style="box-shadow: var(--shadow)"
+  >
+
+    <!-- ── Panel header ──────────────────────────────────────────────────────── -->
+    <div class="flex items-center justify-between px-7 pt-6 pb-4 flex-shrink-0">
+      <div>
+        <p v-if="viewMode === 'day'" class="text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--text-sub)]">
+          {{ weekday }}
+        </p>
+        <h2 class="text-[22px] font-bold tracking-tight text-[var(--text)]">
+          {{ viewMode === 'day' ? dayMonth : weekRangeLabel }}
+        </h2>
+      </div>
+      <div class="flex items-center gap-2">
+        <span
+          v-if="readOnly"
+          class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]
+                 px-2 py-1 rounded border border-[var(--border)]"
+          aria-label="Past day — read only"
+        >Past</span>
+        <!-- Day / Week toggle -->
+        <div class="flex rounded-[10px] border border-[var(--border)] overflow-hidden" role="group" aria-label="View mode">
+          <button
+            class="px-4 py-2 text-xs font-semibold transition-colors
+                   focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]"
+            :class="{
+              'bg-[var(--surface3)] text-[var(--text)]':   viewMode === 'day',
+              'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]': viewMode !== 'day',
+            }"
+            @click="viewMode = 'day'"
+            :aria-pressed="viewMode === 'day'"
+            aria-label="Day view"
+          >Day</button>
+          <button
+            class="px-4 py-2 text-xs font-semibold transition-colors border-l border-[var(--border)]
+                   focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]"
+            :class="{
+              'bg-[var(--surface3)] text-[var(--text)]':   viewMode === 'week',
+              'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]': viewMode !== 'week',
+            }"
+            @click="viewMode = 'week'"
+            :aria-pressed="viewMode === 'week'"
+            aria-label="Week view"
+          >Week</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Area filter bar ───────────────────────────────────────────────────── -->
+    <div v-if="areas.length" class="px-7 pb-3 flex gap-1.5 flex-wrap flex-shrink-0" role="group" aria-label="Filter by area">
+      <button
+        class="px-3 py-1 rounded-full text-xs font-semibold border transition-colors
+               focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+        :class="{
+          'bg-[var(--accent)] border-[var(--accent)] text-[var(--bg)]':                          activeAreaFilter === null,
+          'bg-transparent border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]': activeAreaFilter !== null,
+        }"
+        @click="activeAreaFilter = null"
+        :aria-pressed="activeAreaFilter === null"
+      >All</button>
+      <button
+        v-for="a in areas" :key="a.id"
+        class="px-3 py-1 rounded-full text-xs font-semibold border transition-all
+               focus:outline-none focus:ring-2 focus:ring-offset-1"
+        :style="activeAreaFilter === a.id
+          ? { background: a.color, borderColor: a.color, color: '#fff' }
+          : { background: 'transparent', borderColor: a.color, color: '#fff' }"
+        :class="{ 'opacity-50 hover:opacity-80': activeAreaFilter !== a.id }"
+        @click="activeAreaFilter = activeAreaFilter === a.id ? null : a.id"
+        :aria-pressed="activeAreaFilter === a.id"
+      >{{ a.name }}</button>
+    </div>
+
+    <!-- ── Scrollable content ────────────────────────────────────────────────── -->
+    <div class="flex-1 overflow-y-auto thin-scroll px-7 pb-7 flex flex-col gap-8">
+
+      <!-- WEEK VIEW -->
+      <template v-if="viewMode === 'week'">
+        <ul class="flex flex-col gap-2" role="list" aria-label="Week summary">
+          <li
+            v-for="day in weekDays" :key="day.key"
+            class="border border-[var(--border)] rounded-xl overflow-hidden"
+            :class="{
+              'border-[var(--accent)]':   day.isSelected,
+              'opacity-60':               day.isPast,
+            }"
+            role="listitem"
+          >
+            <!-- Day header row -->
+            <button
+              class="w-full flex items-center gap-3 px-4 py-3 bg-[var(--surface2)]
+                     hover:bg-[var(--surface3)] transition-colors text-left
+                     focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]"
+              @click="goToDay(day)"
+              :aria-label="`Go to ${day.dayName} ${day.monthShort} ${day.dateNum}`"
+            >
+              <span
+                class="text-[13px] font-bold w-8 flex-shrink-0"
+                :class="day.isToday ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'"
+              >{{ day.dayName }}</span>
+              <span class="text-[13px] text-[var(--text-muted)]">{{ day.monthShort }} {{ day.dateNum }}</span>
+              <span v-if="day.tasksTotal" class="ml-auto text-[12px] text-[var(--text-sub)]">
+                {{ day.tasksDone }}/{{ day.tasksTotal }}
+              </span>
+              <!-- Habit pips -->
+              <span v-if="day.habits.length" class="flex gap-1 ml-1" aria-hidden="true">
+                <span
+                  v-for="h in day.habits.slice(0, 6)" :key="h.id"
+                  class="w-[8px] h-[8px] rounded-full"
+                  :class="isHabitDone(day.key, h.id) ? 'opacity-100' : 'opacity-30'"
+                  :style="h.areaId ? { background: areaColor(h.areaId) } : { background: 'var(--text-muted)' }"
+                />
+              </span>
+            </button>
+            <!-- Tasks for this day -->
+            <div
+              v-if="day.tasks.length || day.doneTasks.length"
+              class="px-4 py-2 flex flex-col gap-1"
+            >
+              <div v-for="t in day.doneTasks" :key="t.id" class="flex items-center gap-1.5">
+                <span class="w-[7px] h-[7px] rounded-full flex-shrink-0"
+                      :style="t.areaId ? { background: areaColor(t.areaId) } : { background: 'var(--border)' }"/>
+                <span class="text-[12px] text-[var(--text-muted)] line-through">{{ t.text }}</span>
+              </div>
+              <div v-for="t in day.tasks" :key="t.id" class="flex items-center gap-1.5">
+                <span class="w-[7px] h-[7px] rounded-full flex-shrink-0"
+                      :style="t.areaId ? { background: areaColor(t.areaId) } : { background: 'var(--border)' }"/>
+                <span class="text-[12px] text-[var(--text)]">{{ t.text }}</span>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </template>
+
+      <!-- DAY VIEW -->
+      <template v-else>
+        <TaskSection
+          :dateKey="dateKey"
+          :readOnly="readOnly"
+          :activeAreaFilter="activeAreaFilter"
+          @tag-menu="openTagMenu"
+        />
+        <HabitSection
+          :dateKey="dateKey"
+          :readOnly="readOnly"
+          :activeAreaFilter="activeAreaFilter"
+          @tag-menu="openTagMenu"
+        />
+      </template>
+
+    </div>
+  </div>
+
+  <!-- ── Toast notification ─────────────────────────────────────────────────── -->
+  <Teleport to="body">
+    <Transition name="toast">
+      <div
+        v-if="toastMsg"
+        class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50
+               bg-[var(--surface)] border border-[var(--border)] text-[var(--text)]
+               text-[13px] px-5 py-3 rounded-xl"
+        style="box-shadow: 0 8px 24px rgba(0,0,0,0.4)"
+        role="status"
+        aria-live="polite"
+      >{{ toastMsg }}</div>
+    </Transition>
+  </Teleport>
+
+  <!-- ── Right-click area tag menu ─────────────────────────────────────────── -->
+  <Teleport to="body">
+    <div
+      v-if="tagMenu"
+      class="fixed z-[100] min-w-[150px] rounded-xl border border-[var(--border)]
+             bg-[var(--surface)] p-1 flex flex-col gap-0.5"
+      :style="{ left: tagMenu.x + 'px', top: tagMenu.y + 'px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }"
+      role="menu"
+      aria-label="Assign area"
+      @click.stop
+    >
+      <button
+        class="w-full text-left px-3 py-2 rounded-lg text-[13px] text-[var(--text-muted)]
+               transition-colors hover:bg-[var(--surface2)] hover:text-[var(--text)]
+               focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+        @click="applyTag(null)"
+        role="menuitem"
+      >No area</button>
+      <button
+        v-for="a in areas" :key="a.id"
+        class="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-[13px]
+               text-[var(--text)] transition-colors hover:bg-[var(--surface2)]
+               focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+        @click="applyTag(a.id)"
+        role="menuitem"
+      >
+        <span class="w-2 h-2 rounded-full flex-shrink-0" :style="{ background: a.color }" aria-hidden="true"/>
+        {{ a.name }}
+      </button>
+    </div>
+  </Teleport>
+
+</template>
