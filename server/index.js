@@ -14,6 +14,9 @@ initDb()
 
 const app = express()
 
+// Trust Railway's reverse proxy so secure cookies work over HTTPS
+app.set('trust proxy', 1)
+
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
 
 app.use(express.json())
