@@ -1,4 +1,4 @@
-# Trackr
+# Resolve
 
 A minimal personal productivity app built with Vue 3 + Vite. Plan your day, track habits, and stay on top of deadlines.
 
