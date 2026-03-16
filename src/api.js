@@ -1,13 +1,21 @@
 /**
  * Thin fetch wrapper for the Resolve API.
+ * Auth uses a JWT stored in localStorage, sent as Authorization: Bearer <token>.
  * In dev, VITE_API_URL is unset → relative URLs → Vite proxy → localhost:3000.
  * In production, VITE_API_URL is set to the Railway server URL.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
+const TOKEN_KEY = 'resolve_token'
+
+export function getToken() { return localStorage.getItem(TOKEN_KEY) }
+export function setToken(t) { localStorage.setItem(TOKEN_KEY, t) }
+export function clearToken() { localStorage.removeItem(TOKEN_KEY) }
 
 async function req(method, path, body) {
-    const opts = { method, credentials: 'include', headers: {} }
+    const opts = { method, headers: {} }
+    const token = getToken()
+    if (token) opts.headers['Authorization'] = `Bearer ${token}`
     if (body !== undefined) {
         opts.headers['Content-Type'] = 'application/json'
         opts.body = JSON.stringify(body)
@@ -25,7 +33,7 @@ async function req(method, path, body) {
 export const api = {
     me: () => req('GET', '/me'),
     sync: () => req('GET', '/sync'),
-    logout: () => fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' }),
+    logout: () => Promise.resolve(), // JWT logout is handled client-side (clearToken)
 
     // Tasks
     createTask: (dateKey, text, areaId) => req('POST', '/tasks', { dateKey, text, areaId }),

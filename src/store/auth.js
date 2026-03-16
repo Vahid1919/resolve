@@ -1,21 +1,40 @@
 import { ref } from 'vue'
-import { api } from '../api.js'
+import { getToken, setToken, clearToken } from '../api.js'
 
-export const user = ref(null)   // { id, email, name, avatar } | null
-export const authLoading = ref(true)   // true while initial /api/me is in-flight
+export const user        = ref(null)   // { id, email, name, avatar } | null
+export const authLoading = ref(true)   // true while resolving token on app load
 
-export async function loadUser() {
+function decodeJwt(token) {
     try {
-        user.value = await api.me()
+        return JSON.parse(atob(token.split('.')[1]))
     } catch {
-        user.value = null
-    } finally {
-        authLoading.value = false
+        return null
     }
 }
 
-export async function logout() {
-    await api.logout()
+export function loadUser() {
+    // Pick up token from URL after OAuth redirect
+    const params = new URLSearchParams(window.location.search)
+    const urlToken = params.get('token')
+    if (urlToken) {
+        setToken(urlToken)
+        window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    const token = getToken()
+    if (token) {
+        const payload = decodeJwt(token)
+        if (payload && payload.exp * 1000 > Date.now()) {
+            user.value = { id: payload.id, email: payload.email, name: payload.name, avatar: payload.avatar }
+        } else {
+            clearToken() // expired
+        }
+    }
+    authLoading.value = false
+}
+
+export function logout() {
+    clearToken()
     user.value = null
 }
 

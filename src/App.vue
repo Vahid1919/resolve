@@ -58,8 +58,8 @@ onMounted(async () => {
   document.addEventListener("mousedown", closeOnOutsideClick);
   document.addEventListener("keydown", closeOnEscape);
 
-  await loadUser();
-  if (user.value) await syncAll().catch(() => {});
+  await loadUser()
+  if (user.value) await syncAll().catch(() => {})
 });
 onUnmounted(() => {
   document.removeEventListener("mousedown", closeOnOutsideClick);

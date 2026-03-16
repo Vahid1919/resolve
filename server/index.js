@@ -3,6 +3,7 @@ import express from 'express'
 import session from 'express-session'
 import passport from 'passport'
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20'
+import jwt from 'jsonwebtoken'
 import cors from 'cors'
 import { db, initDb } from './db.js'
 import tasksRouter from './routes/tasks.js'
@@ -73,18 +74,34 @@ app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'em
 
 app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: `${CLIENT_ORIGIN}?auth=error` }),
-    (_req, res) => res.redirect(CLIENT_ORIGIN)
+    (req, res) => {
+        // Issue a JWT and send it to the frontend via URL param.
+        // This avoids cross-domain session cookie issues (Firefox, Safari).
+        const token = jwt.sign(
+            { id: req.user.id, email: req.user.email, name: req.user.name, avatar: req.user.avatar },
+            process.env.SESSION_SECRET,
+            { expiresIn: '30d' }
+        )
+        res.redirect(`${CLIENT_ORIGIN}?token=${token}`)
+    }
 )
 
-app.post('/auth/logout', (req, res) => req.logout(() => res.json({ ok: true })))
+// Logout is client-side (clear localStorage token); this endpoint is a no-op
+app.post('/auth/logout', (_req, res) => res.json({ ok: true }))
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => res.json({ ok: true, service: 'resolve-api' }))
 
-// ── requireAuth middleware ────────────────────────────────────────────────────
+// ── requireAuth middleware (JWT-based, works cross-domain in all browsers) ────
 function requireAuth(req, res, next) {
-    if (!req.user) return res.status(401).json({ error: 'unauthenticated' })
-    next()
+    const auth = req.headers.authorization
+    if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'unauthenticated' })
+    try {
+        req.user = jwt.verify(auth.slice(7), process.env.SESSION_SECRET)
+        next()
+    } catch {
+        return res.status(401).json({ error: 'unauthenticated' })
+    }
 }
 
 // ── /api/me ───────────────────────────────────────────────────────────────────
