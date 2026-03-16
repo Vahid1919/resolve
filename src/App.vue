@@ -48,18 +48,18 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]">
+  <div class="min-h-screen flex flex-col bg-(--bg) text-(--text)">
 
     <!-- ── App header ───────────────────────────────────────────────────────── -->
     <header
       role="banner"
       class="sticky top-0 z-10 flex items-center gap-3 px-10 py-5
-             border-b border-[var(--border)] bg-[var(--surface)] animate-slide-up"
+             border-b border-(--border) bg-(--surface) animate-slide-up"
       style="box-shadow: var(--shadow)"
     >
       <!-- App name -->
       <span
-        class="text-xl font-bold tracking-[0.18em] uppercase text-[var(--accent)]
+        class="text-xl font-bold tracking-[0.18em] uppercase text-(--accent)
                animate-flicker app-name-glow"
         aria-label="Resolve"
       >Resolve</span>
@@ -67,7 +67,7 @@ onUnmounted(() => {
       <!-- Live clock -->
       <span
         class="ml-auto text-xs font-semibold tracking-widest uppercase
-               text-[var(--accent)] animate-flicker opacity-75"
+               text-(--accent) animate-flicker opacity-75"
         aria-live="polite"
         aria-label="Current time"
       >{{ clockTime }}</span>
@@ -76,11 +76,11 @@ onUnmounted(() => {
       <div class="relative" ref="settingsEl">
         <button
           class="w-11 h-9 flex items-center justify-center rounded-[10px]
-                 border border-[var(--border)] bg-[var(--surface2)] text-[var(--text)]
+                 border border-(--border) bg-(--surface2) text-(--text)
                  cursor-pointer transition-colors
-                 hover:bg-[var(--surface3)] hover:border-[var(--accent)]
-                 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          :class="{ 'bg-[var(--surface3)] border-[var(--accent)]': settingsOpen }"
+                 hover:bg-(--surface3) hover:border-(--accent)
+                 focus:outline-none focus:ring-2 focus:ring-(--accent)"
+          :class="{ 'bg-(--surface3) border-(--accent)': settingsOpen }"
           @click="toggleSettings"
           :aria-expanded="settingsOpen"
           :aria-label="settingsOpen ? 'Close settings' : 'Open settings'"

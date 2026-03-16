@@ -10,16 +10,16 @@ import { ref, watch } from 'vue'
 const THEME_KEY = 'resolve-theme'
 
 export function useTheme() {
-  const isDark = ref(localStorage.getItem(THEME_KEY) !== 'light')
+    const isDark = ref(localStorage.getItem(THEME_KEY) !== 'light')
 
-  watch(isDark, val => {
-    localStorage.setItem(THEME_KEY, val ? 'dark' : 'light')
-    document.documentElement.setAttribute('data-theme', val ? 'dark' : 'light')
-  }, { immediate: true })
+    watch(isDark, val => {
+        localStorage.setItem(THEME_KEY, val ? 'dark' : 'light')
+        document.documentElement.setAttribute('data-theme', val ? 'dark' : 'light')
+    }, { immediate: true })
 
-  function toggleTheme() {
-    isDark.value = !isDark.value
-  }
+    function toggleTheme() {
+        isDark.value = !isDark.value
+    }
 
-  return { isDark, toggleTheme }
+    return { isDark, toggleTheme }
 }
