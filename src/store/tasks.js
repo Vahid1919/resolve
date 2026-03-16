@@ -1,20 +1,17 @@
-/**
- * Task store — manages active and completed tasks, keyed by date string (YYYY-MM-DD).
- *
- * Exports reactive state and all task-related operations.
- * Import from store/index.js via useStore() instead of using this directly.
- */
+import { reactive } from 'vue'
+import { api } from '../api.js'
 
-import { reactive, watch } from 'vue'
-import { loadMap, save } from './storage.js'
+// ── Reactive state (populated via loadFromSync on app boot) ───────────────────
+export const tasksByDate = reactive({})
+export const completedByDate = reactive({})
 
-// ── Reactive state ────────────────────────────────────────────────────────────
-export const tasksByDate = reactive(loadMap('tasks'))
-export const completedByDate = reactive(loadMap('completed'))
-
-// ── Persistence watchers ──────────────────────────────────────────────────────
-watch(tasksByDate, v => save('tasks', v), { deep: true })
-watch(completedByDate, v => save('completed', v), { deep: true })
+// ── Hydrate from /api/sync response ──────────────────────────────────────────
+export function loadTasksFromSync({ tasksByDate: t, completedByDate: c }) {
+    Object.keys(tasksByDate).forEach(k => delete tasksByDate[k])
+    Object.keys(completedByDate).forEach(k => delete completedByDate[k])
+    Object.assign(tasksByDate, t)
+    Object.assign(completedByDate, c)
+}
 
 // ── Operations ────────────────────────────────────────────────────────────────
 
@@ -23,17 +20,29 @@ export function getTasks(dateKey) {
     return tasksByDate[dateKey]
 }
 
-export function addTask(dateKey, text, areaId = null) {
+export async function addTask(dateKey, text, areaId = null) {
     if (!text.trim()) return
     if (!tasksByDate[dateKey]) tasksByDate[dateKey] = []
-    tasksByDate[dateKey].push({ id: Date.now(), text: text.trim(), areaId })
+    const tempId = Date.now()
+    tasksByDate[dateKey].push({ id: tempId, text: text.trim(), areaId })
+    try {
+        const { id } = await api.createTask(dateKey, text, areaId)
+        const t = tasksByDate[dateKey]?.find(t => t.id === tempId)
+        if (t) t.id = id
+    } catch {
+        const idx = tasksByDate[dateKey]?.findIndex(t => t.id === tempId)
+        if (idx != null && idx !== -1) tasksByDate[dateKey].splice(idx, 1)
+    }
 }
 
 export function removeTask(dateKey, id) {
     const list = tasksByDate[dateKey]
     if (!list) return
     const idx = list.findIndex(t => t.id === id)
-    if (idx !== -1) list.splice(idx, 1)
+    if (idx !== -1) {
+        list.splice(idx, 1)
+        api.deleteTask(id).catch(() => { })
+    }
 }
 
 /** Move a task from active → completed archive. */
@@ -44,7 +53,8 @@ export function archiveTask(dateKey, id) {
     if (idx === -1) return
     const [item] = list.splice(idx, 1)
     if (!completedByDate[dateKey]) completedByDate[dateKey] = []
-    completedByDate[dateKey].unshift({ ...item, completedAt: Date.now() })
+    completedByDate[dateKey].unshift(item)
+    api.completeTask(id).catch(() => { })
 }
 
 /** Move a task from completed archive → active. */
@@ -54,9 +64,9 @@ export function unarchiveTask(dateKey, id) {
     const idx = list.findIndex(c => c.id === id)
     if (idx === -1) return
     const [item] = list.splice(idx, 1)
-    const { completedAt, ...original } = item
     if (!tasksByDate[dateKey]) tasksByDate[dateKey] = []
-    tasksByDate[dateKey].push(original)
+    tasksByDate[dateKey].push(item)
+    api.uncompleteTask(id).catch(() => { })
 }
 
 export function getCompleted(dateKey) {
@@ -67,10 +77,17 @@ export function removeCompleted(dateKey, id) {
     const list = completedByDate[dateKey]
     if (!list) return
     const idx = list.findIndex(c => c.id === id)
-    if (idx !== -1) list.splice(idx, 1)
+    if (idx !== -1) {
+        list.splice(idx, 1)
+        api.deleteCompleted(id).catch(() => { })
+    }
 }
 
 export function setTaskArea(dateKey, id, areaId) {
     const task = (tasksByDate[dateKey] || []).find(t => t.id === id)
-    if (task) task.areaId = areaId
+        ?? (completedByDate[dateKey] || []).find(t => t.id === id)
+    if (task) {
+        task.areaId = areaId
+        api.setTaskArea(id, areaId).catch(() => { })
+    }
 }

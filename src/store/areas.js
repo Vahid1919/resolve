@@ -6,30 +6,48 @@
  * When an area is deleted, all task and habit references to it are cleared.
  */
 
-import { reactive, watch } from 'vue'
-import { loadList, save } from './storage.js'
-import { tasksByDate } from './tasks.js'
+import { reactive } from 'vue'
+import { api } from '../api.js'
+import { tasksByDate, completedByDate } from './tasks.js'
 import { habitDefs } from './habits.js'
 
-// ── Reactive state ────────────────────────────────────────────────────────────
-export const areas = reactive(loadList('areas'))
+// ── Reactive state (populated via loadAreasFromSync on app boot) ──────────────
+export const areas = reactive([])
 
-// ── Persistence watcher ───────────────────────────────────────────────────────
-watch(areas, v => save('areas', v), { deep: true })
+// ── Hydrate from /api/sync response ──────────────────────────────────────────
+export function loadAreasFromSync({ areas: a }) {
+    areas.splice(0, areas.length, ...a)
+}
 
 // ── Operations ────────────────────────────────────────────────────────────────
 
 export function addArea(name, color) {
     if (!name.trim()) return
-    areas.push({ id: Date.now(), name: name.trim(), color })
+    const tempId = Date.now()
+    areas.push({ id: tempId, name: name.trim(), color })
+    api.createArea(name, color).then(({ id }) => {
+        const a = areas.find(a => a.id === tempId)
+        if (a) a.id = id
+    }).catch(() => {
+        const idx = areas.findIndex(a => a.id === tempId)
+        if (idx !== -1) areas.splice(idx, 1)
+    })
 }
 
 export function removeArea(id) {
     const idx = areas.findIndex(a => a.id === id)
-    if (idx !== -1) areas.splice(idx, 1)
+    if (idx !== -1) {
+        areas.splice(idx, 1)
+        api.deleteArea(id).catch(() => { })
+    }
 
     // Clear the deleted area from all tasks and habits
     for (const tasks of Object.values(tasksByDate)) {
+        for (const task of tasks) {
+            if (task.areaId === id) task.areaId = null
+        }
+    }
+    for (const tasks of Object.values(completedByDate)) {
         for (const task of tasks) {
             if (task.areaId === id) task.areaId = null
         }
@@ -44,6 +62,7 @@ export function updateArea(id, fields) {
     if (!area) return
     if (fields.name !== undefined) area.name = fields.name.trim() || area.name
     if (fields.color !== undefined) area.color = fields.color
+    api.updateArea(id, area.name, area.color).catch(() => { })
 }
 
 /** Returns the hex color for an area id, or null if not found. */

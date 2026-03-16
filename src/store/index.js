@@ -11,17 +11,32 @@
 import {
     tasksByDate, completedByDate,
     getTasks, addTask, removeTask, archiveTask, unarchiveTask,
-    getCompleted, removeCompleted, setTaskArea
+    getCompleted, removeCompleted, setTaskArea,
+    loadTasksFromSync,
 } from './tasks.js'
 
 import {
     habitDefs, habitCompletions,
     addHabit, skipHabitOnDate, removeHabitFromDate,
     getHabitsForDate, isHabitDone, completeHabit, uncompleteHabit,
-    setHabitArea
+    setHabitArea,
+    loadHabitsFromSync,
 } from './habits.js'
 
-import { areas, addArea, removeArea, updateArea, getAreaColor, getAreaName } from './areas.js'
+import {
+    areas, addArea, removeArea, updateArea, getAreaColor, getAreaName,
+    loadAreasFromSync,
+} from './areas.js'
+
+import { api } from '../api.js'
+
+// ── Sync all data from the server in one shot ─────────────────────────────────
+export async function syncAll() {
+    const data = await api.sync()
+    loadAreasFromSync(data)
+    loadTasksFromSync(data)
+    loadHabitsFromSync(data)
+}
 
 // ── Calendar colour helpers ───────────────────────────────────────────────────
 //
