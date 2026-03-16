@@ -4,17 +4,29 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "node server/index.js",
     "dev": "vite",
+    "dev:server": "node server/index.js",
+    "dev:all": "concurrently \"pnpm run dev\" \"pnpm run dev:server\"",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
+    "better-sqlite3": "^12.8.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
     "tailwindcss": "^4.2.1",
     "vue": "^3.5.25"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.2",
+    "concurrently": "^9.2.1",
+    "nodemon": "^3.1.14",
     "vite": "^7.3.1"
   }
 }

@@ -118,6 +118,15 @@ const weekRangeLabel = computed(() => {
   return `${f.monthShort} ${f.dateNum} – ${l.monthShort} ${l.dateNum}`;
 });
 
+const weekNumber = computed(() => {
+  if (!props.dateKey) return "";
+  const [y, m, d] = props.dateKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const startOfYear = new Date(y, 0, 1);
+  const dayOfYear = Math.floor((dt - startOfYear) / 86400000);
+  return `Week ${Math.ceil((dayOfYear + startOfYear.getDay() + 1) / 7)}`;
+});
+
 function goToDay(day) {
   emit("select-day", day.key, day.isPast);
   viewMode.value = "day";
@@ -195,10 +204,9 @@ onUnmounted(() => document.removeEventListener("click", closeAllMenus));
     <div class="flex items-center justify-between px-7 pt-6 pb-4 shrink-0">
       <div>
         <p
-          v-if="viewMode === 'day'"
           class="text-[11px] font-semibold uppercase tracking-[0.15em] text-(--text-sub)"
         >
-          {{ weekday }}
+          {{ viewMode === "day" ? weekday : weekNumber }}
         </p>
         <h2 class="text-[22px] font-bold tracking-tight text-(--text)">
           {{ viewMode === "day" ? dayMonth : weekRangeLabel }}
@@ -310,11 +318,7 @@ onUnmounted(() => document.removeEventListener("click", closeAllMenus));
             >
               <span
                 class="text-[13px] font-bold w-8 shrink-0"
-                :class="
-                  day.isToday
-                    ? 'text-(--accent)'
-                    : 'text-(--text-muted)'
-                "
+                :class="day.isToday ? 'text-(--accent)' : 'text-(--text-muted)'"
                 >{{ day.dayName }}</span
               >
               <span class="text-[13px] text-(--text-muted)"
@@ -365,10 +369,9 @@ onUnmounted(() => document.removeEventListener("click", closeAllMenus));
                       : { background: 'var(--border)' }
                   "
                 />
-                <span
-                  class="text-[12px] text-(--text-muted) line-through"
-                  >{{ t.text }}</span
-                >
+                <span class="text-[12px] text-(--text-muted) line-through">{{
+                  t.text
+                }}</span>
               </div>
               <div
                 v-for="t in day.tasks"
