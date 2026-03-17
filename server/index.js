@@ -170,6 +170,19 @@ app.use('/api/tasks', requireAuth, tasksRouter)
 app.use('/api/habits', requireAuth, habitsRouter)
 app.use('/api/areas', requireAuth, areasRouter)
 
+// ── Serve built frontend in production ───────────────────────────────────────
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+import { existsSync } from 'fs'
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const distDir = join(__dirname, '..', 'dist')
+
+if (existsSync(distDir)) {
+    app.use(express.static(distDir))
+    // SPA fallback — serve index.html for any non-API route
+    app.get('*', (_req, res) => res.sendFile(join(distDir, 'index.html')))
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
