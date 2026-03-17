@@ -20,15 +20,16 @@ export function getTasks(dateKey) {
     return tasksByDate[dateKey]
 }
 
-export async function addTask(dateKey, text, areaId = null) {
+export async function addTask(dateKey, text, areaId = null, parentId = null) {
     if (!text.trim()) return
     if (!tasksByDate[dateKey]) tasksByDate[dateKey] = []
     const tempId = Date.now()
-    tasksByDate[dateKey].push({ id: tempId, text: text.trim(), areaId })
+    const sortOrder = -1
+    tasksByDate[dateKey].unshift({ id: tempId, text: text.trim(), areaId, parentId, sortOrder })
     try {
-        const { id } = await api.createTask(dateKey, text, areaId)
+        const { id } = await api.createTask(dateKey, text, areaId, parentId)
         const t = tasksByDate[dateKey]?.find(t => t.id === tempId)
-        if (t) t.id = id
+        if (t) { t.id = id; t.sortOrder = -1 }
     } catch {
         const idx = tasksByDate[dateKey]?.findIndex(t => t.id === tempId)
         if (idx != null && idx !== -1) tasksByDate[dateKey].splice(idx, 1)
@@ -90,4 +91,50 @@ export function setTaskArea(dateKey, id, areaId) {
         task.areaId = areaId
         api.setTaskArea(id, areaId).catch(() => { })
     }
+}
+
+export function editTaskText(dateKey, id, text) {
+    const task = (tasksByDate[dateKey] || []).find(t => t.id === id)
+    if (!task) return
+    task.text = text
+    api.updateTaskText(id, text).catch(() => { })
+}
+
+/** Reorder: move movedId to just before targetId (or to end if targetId is null). */
+export function reorderTasks(dateKey, movedId, targetId) {
+    const list = tasksByDate[dateKey]
+    if (!list) return
+    const fromIdx = list.findIndex(t => t.id === movedId)
+    if (fromIdx === -1) return
+    const [moved] = list.splice(fromIdx, 1)
+    if (targetId === null) {
+        list.push(moved)
+    } else {
+        const toIdx = list.findIndex(t => t.id === targetId)
+        list.splice(toIdx === -1 ? list.length : toIdx, 0, moved)
+    }
+    list.forEach((t, i) => {
+        t.sortOrder = i
+        api.reorderTask(t.id, i).catch(() => { })
+    })
+}
+
+/** Move a task from one date to another. */
+export function moveTaskToDate(fromDateKey, id, toDateKey) {
+    if (fromDateKey === toDateKey) return
+    const fromList = tasksByDate[fromDateKey]
+    if (!fromList) return
+    const idx = fromList.findIndex(t => t.id === id)
+    if (idx === -1) return
+    const [task] = fromList.splice(idx, 1)
+    if (!tasksByDate[toDateKey]) tasksByDate[toDateKey] = []
+    tasksByDate[toDateKey].push(task)
+    api.moveTaskDate(id, toDateKey).catch(() => { })
+}
+
+export function setTaskParent(dateKey, id, parentId) {
+    const task = (tasksByDate[dateKey] || []).find(t => t.id === id)
+    if (!task) return
+    task.parentId = parentId
+    api.setTaskParent(id, parentId).catch(() => { })
 }

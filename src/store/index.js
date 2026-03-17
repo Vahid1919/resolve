@@ -12,6 +12,7 @@ import {
     tasksByDate, completedByDate,
     getTasks, addTask, removeTask, archiveTask, unarchiveTask,
     getCompleted, removeCompleted, setTaskArea,
+    editTaskText, reorderTasks, moveTaskToDate, setTaskParent,
     loadTasksFromSync,
 } from './tasks.js'
 
@@ -92,6 +93,10 @@ export function useStore() {
         getCompleted,
         removeCompleted,
         setTaskArea,
+        editTaskText,
+        reorderTasks,
+        moveTaskToDate,
+        setTaskParent,
 
         // ── Habits ─────────────────────────────────────────
         habitDefs,
