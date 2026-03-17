@@ -179,8 +179,8 @@ const distDir = join(__dirname, '..', 'dist')
 
 if (existsSync(distDir)) {
     app.use(express.static(distDir))
-    // SPA fallback — serve index.html for any non-API route
-    app.get('*', (_req, res) => res.sendFile(join(distDir, 'index.html')))
+    // SPA fallback — serve index.html for any non-API route (Express 5 wildcard syntax)
+    app.get('/{*path}', (_req, res) => res.sendFile(join(distDir, 'index.html')))
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
