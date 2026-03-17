@@ -11,7 +11,7 @@ db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
 
 export function initDb() {
-    db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id      TEXT PRIMARY KEY,
       email   TEXT UNIQUE NOT NULL,
@@ -66,4 +66,12 @@ export function initDb() {
       PRIMARY KEY (date_key, habit_id, user_id)
     );
   `)
+
+  // Migrations — safe to run on every startup (no-op if column exists)
+  for (const stmt of [
+    'ALTER TABLE tasks ADD COLUMN sort_order INTEGER DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN parent_id INTEGER',
+  ]) {
+    try { db.exec(stmt) } catch { /* column already exists */ }
+  }
 }
