@@ -18,6 +18,9 @@ const {
   unarchiveTask,
   getCompleted,
   removeCompleted,
+  editTaskText,
+  reorderTasks,
+  setTaskParent,
   areas,
   areaColor,
   areaName,
@@ -68,6 +71,7 @@ function sample(arr, n) {
 const showForm = ref(false);
 const newText = ref("");
 const newAreaId = ref(null);
+const newParentId = ref(null);
 const suggestions = ref([]);
 const inputEl = ref(null);
 
@@ -75,6 +79,7 @@ function openForm() {
   showForm.value = true;
   newText.value = "";
   newAreaId.value = null;
+  newParentId.value = null;
   suggestions.value = sample(TASK_POOL, 4);
   nextTick(() => inputEl.value?.focus());
 }
@@ -83,17 +88,147 @@ function closeForm() {
   showForm.value = false;
   newText.value = "";
   newAreaId.value = null;
+  newParentId.value = null;
 }
 
 function confirmAdd() {
   if (!newText.value.trim()) return;
-  addTask(props.dateKey, newText.value, newAreaId.value);
+  addTask(props.dateKey, newText.value, newAreaId.value, newParentId.value);
   closeForm();
 }
 
 function quickAdd(text) {
-  addTask(props.dateKey, text, newAreaId.value);
+  addTask(props.dateKey, text, newAreaId.value, null);
   closeForm();
+}
+
+function handleInputKeydown(e) {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    // Toggle subtask: Tab → indent under last top-level task; Tab again → unindent
+    if (newParentId.value) {
+      newParentId.value = null;
+    } else {
+      const topLevel = [...activeTasks.value]
+        .reverse()
+        .find((t) => !t.parentId);
+      if (topLevel) newParentId.value = topLevel.id;
+    }
+    return;
+  }
+  if (e.key === "Enter") confirmAdd();
+  if (e.key === "Escape") closeForm();
+}
+
+function parentName(parentId) {
+  return activeTasks.value.find((t) => t.id === parentId)?.text ?? "";
+}
+
+// ── Inline editing ────────────────────────────────────────────────────────────
+const editingId = ref(null);
+const editText = ref("");
+
+function startEdit(task) {
+  if (props.readOnly || editingId.value === task.id) return;
+  editingId.value = task.id;
+  editText.value = task.text;
+  nextTick(() => {
+    const el = document.getElementById(`te-${task.id}`);
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  });
+}
+
+function confirmEdit(task) {
+  if (editingId.value !== task.id) return;
+  if (editText.value.trim() && editText.value.trim() !== task.text) {
+    editTaskText(props.dateKey, task.id, editText.value.trim());
+  }
+  editingId.value = null;
+}
+
+function cancelEdit() {
+  editingId.value = null;
+}
+
+function handleEditKeydown(e, task, idx) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    confirmEdit(task);
+    return;
+  }
+  if (e.key === "Escape") {
+    e.preventDefault();
+    cancelEdit();
+    return;
+  }
+  if (e.key === "Tab" && !e.shiftKey) {
+    e.preventDefault();
+    if (idx > 0) {
+      const above = activeTasks.value[idx - 1];
+      const pid = above.parentId ?? above.id;
+      if (pid !== task.id && pid !== task.parentId) {
+        setTaskParent(props.dateKey, task.id, pid);
+      }
+    }
+  } else if (e.key === "Tab" && e.shiftKey) {
+    e.preventDefault();
+    if (task.parentId) setTaskParent(props.dateKey, task.id, null);
+  }
+}
+
+// ── Drag-to-reorder ───────────────────────────────────────────────────────────
+const draggedId = ref(null);
+const dragOverId = ref(null);
+
+function onDragStart(e, task) {
+  draggedId.value = task.id;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("task-id", String(task.id));
+  e.dataTransfer.setData("from-date", props.dateKey);
+}
+
+function onTaskDragOver(e, task) {
+  if (!e.dataTransfer.types.includes("task-id")) return;
+  e.preventDefault();
+  dragOverId.value = task.id;
+}
+
+function onTaskDrop(e, task) {
+  e.preventDefault();
+  e.stopPropagation();
+  const fromDate = e.dataTransfer.getData("from-date");
+  const tid = Number(e.dataTransfer.getData("task-id"));
+  if (fromDate === props.dateKey && tid !== task.id) {
+    reorderTasks(props.dateKey, tid, task.id);
+  }
+  draggedId.value = null;
+  dragOverId.value = null;
+}
+
+function onEndZoneDragOver(e) {
+  if (!e.dataTransfer.types.includes("task-id")) return;
+  e.preventDefault();
+  dragOverId.value = "__end__";
+}
+
+function onEndZoneDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const fromDate = e.dataTransfer.getData("from-date");
+  const tid = Number(e.dataTransfer.getData("task-id"));
+  if (fromDate === props.dateKey && tid) {
+    reorderTasks(props.dateKey, tid, null);
+  }
+  draggedId.value = null;
+  dragOverId.value = null;
+}
+
+function onDragEnd() {
+  draggedId.value = null;
+  dragOverId.value = null;
 }
 </script>
 
@@ -110,8 +245,7 @@ function quickAdd(text) {
         v-if="!readOnly"
         class="w-7 h-7 flex items-center justify-center rounded-[8px] border border-(--border) bg-(--surface2) text-(--text-muted) cursor-pointer transition-all hover:bg-(--surface3) hover:border-(--accent) hover:text-(--text)"
         :class="{
-          'bg-(--surface3) border-(--accent) text-(--text) rotate-45':
-            showForm,
+          'bg-(--surface3) border-(--accent) text-(--text) rotate-45': showForm,
         }"
         @click="showForm ? closeForm() : openForm()"
         :aria-expanded="showForm"
@@ -181,17 +315,47 @@ function quickAdd(text) {
             {{ s }}
           </button>
         </div>
+        <!-- Subtask indicator -->
+        <div
+          v-if="newParentId"
+          class="flex items-center gap-1.5 text-xs text-(--text-muted) px-1"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            width="12"
+            height="12"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M3 2v7h7"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="truncate"
+            >Subtask of "{{ parentName(newParentId) }}"</span
+          >
+          <button
+            class="ml-auto text-(--text-sub) hover:text-(--text)"
+            @click="newParentId = null"
+            aria-label="Remove indent"
+          >
+            ×
+          </button>
+        </div>
         <!-- Text input + add button -->
         <div class="flex gap-1.5">
           <input
             ref="inputEl"
             class="flex-1 px-3 py-2 rounded-lg border border-(--border) bg-(--surface2) text-(--text) text-sm placeholder-(--text-sub) outline-none focus:border-(--accent) focus:bg-(--surface3) transition-colors"
             v-model="newText"
-            placeholder="Custom task..."
+            placeholder="New task… (Tab to indent)"
             maxlength="120"
             aria-label="Task description"
-            @keydown.enter="confirmAdd"
-            @keydown.esc="closeForm"
+            @keydown="handleInputKeydown"
           />
           <button
             class="px-4 py-2 rounded-lg bg-(--accent) text-(--bg) text-sm font-semibold cursor-pointer transition-all hover:bg-(--accent-dim) hover:scale-[1.04] active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-(--accent)"
@@ -204,24 +368,53 @@ function quickAdd(text) {
     </Transition>
 
     <!-- Active task list -->
-    <TransitionGroup
-      name="task-item"
-      tag="ul"
-      class="flex flex-col gap-0.5 mb-1"
-      role="list"
-      aria-label="Active tasks"
-    >
+    <ul class="flex flex-col mb-1" role="list" aria-label="Active tasks">
       <li
-        v-for="task in activeTasks"
+        v-for="(task, idx) in activeTasks"
         :key="task.id"
-        class="group flex items-center gap-2 px-2 py-2 rounded-[10px] hover:bg-(--surface3) transition-colors"
+        draggable="true"
+        class="group relative flex items-center gap-2 px-2 py-2 rounded-[10px] transition-colors select-none"
+        :class="{
+          'hover:bg-(--surface3)': editingId !== task.id,
+          'opacity-40': draggedId === task.id,
+          'border-t-2 border-(--accent)': dragOverId === task.id,
+        }"
+        :style="task.parentId ? { paddingLeft: '1.75rem' } : {}"
         role="listitem"
+        @dblclick="startEdit(task)"
         @contextmenu.prevent="$emit('tag-menu', 'task', task.id, $event)"
+        @dragstart="onDragStart($event, task)"
+        @dragover="onTaskDragOver($event, task)"
+        @drop="onTaskDrop($event, task)"
+        @dragend="onDragEnd"
       >
+        <!-- Subtask indent line -->
+        <span
+          v-if="task.parentId"
+          class="absolute left-[14px] top-0 bottom-0 w-px bg-(--border)"
+          aria-hidden="true"
+        />
+
+        <!-- Drag handle -->
+        <span
+          v-if="!readOnly"
+          class="shrink-0 text-(--text-sub) opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing transition-opacity"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 8 14" width="8" height="14" fill="currentColor">
+            <circle cx="2" cy="2" r="1.2" />
+            <circle cx="6" cy="2" r="1.2" />
+            <circle cx="2" cy="6.5" r="1.2" />
+            <circle cx="6" cy="6.5" r="1.2" />
+            <circle cx="2" cy="11" r="1.2" />
+            <circle cx="6" cy="11" r="1.2" />
+          </svg>
+        </span>
+
         <button
           v-if="!readOnly"
           class="w-[18px] h-[18px] shrink-0 flex items-center justify-center rounded-full border border-(--border) bg-(--surface2) text-transparent cursor-pointer transition-all hover:border-(--accent) hover:bg-(--surface3) hover:text-(--text-muted) focus:outline-none focus:ring-2 focus:ring-(--accent)"
-          @click="archiveTask(dateKey, task.id)"
+          @click.stop="archiveTask(dateKey, task.id)"
           :aria-label="'Mark done: ' + task.text"
         >
           <svg
@@ -251,13 +444,30 @@ function quickAdd(text) {
           class="w-1.75 h-1.75 rounded-full shrink-0"
           :style="{ background: areaColor(task.areaId) }"
         />
-        <span class="flex-1 text-[14px] text-(--text) leading-snug">{{
-          task.text
-        }}</span>
+
+        <!-- Task text (display) or edit input -->
+        <span
+          v-if="editingId !== task.id"
+          class="flex-1 text-[14px] text-(--text) leading-snug"
+          :title="!readOnly ? 'Double-click to edit' : undefined"
+          >{{ task.text }}</span
+        >
+        <input
+          v-else
+          :id="`te-${task.id}`"
+          v-model="editText"
+          class="flex-1 text-[14px] text-(--text) bg-(--surface3) rounded px-1.5 py-0.5 outline-none border border-(--accent) leading-snug min-w-0"
+          maxlength="120"
+          @keydown="handleEditKeydown($event, task, idx)"
+          @blur="confirmEdit(task)"
+          @click.stop
+          @dblclick.stop
+        />
+
         <button
           v-if="!readOnly"
           class="w-5 h-5 flex items-center justify-center rounded-md shrink-0 text-(--text-sub) opacity-0 group-hover:opacity-100 hover:text-(--danger) hover:bg-(--danger-soft) transition-all focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-(--danger)"
-          @click="removeTask(dateKey, task.id)"
+          @click.stop="removeTask(dateKey, task.id)"
           :aria-label="'Delete: ' + task.text"
         >
           <svg
@@ -276,7 +486,18 @@ function quickAdd(text) {
           </svg>
         </button>
       </li>
-    </TransitionGroup>
+
+      <!-- Drop zone: reorder to last position -->
+      <li
+        v-if="!readOnly && activeTasks.length"
+        class="h-4 rounded transition-colors"
+        :class="{ 'bg-(--accent-soft)': dragOverId === '__end__' }"
+        @dragover="onEndZoneDragOver"
+        @dragleave="dragOverId = null"
+        @drop="onEndZoneDrop"
+        aria-hidden="true"
+      />
+    </ul>
 
     <!-- Completed tasks -->
     <ul
