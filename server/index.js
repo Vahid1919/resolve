@@ -13,6 +13,11 @@ import areasRouter from './routes/areas.js'
 // ── Init DB ───────────────────────────────────────────────────────────────────
 initDb()
 
+if (!process.env.SESSION_SECRET) {
+    console.error('\n✖  SESSION_SECRET is not set. JWT signing/verification will fail.\n   Set SESSION_SECRET in your environment variables.\n')
+    process.exit(1)
+}
+
 const app = express()
 
 // Trust Railway's reverse proxy so secure cookies work over HTTPS
@@ -118,12 +123,12 @@ app.get('/api/sync', requireAuth, (req, res) => {
 
     // Tasks → tasksByDate / completedByDate
     const taskRows = db.prepare(
-        'SELECT id, date_key, text, area_id, done FROM tasks WHERE user_id = ? ORDER BY created_at'
+        'SELECT id, date_key, text, area_id, done, sort_order, parent_id FROM tasks WHERE user_id = ? ORDER BY sort_order, created_at'
     ).all(uid)
     const tasksByDate = {}
     const completedByDate = {}
     for (const t of taskRows) {
-        const task = { id: t.id, text: t.text, areaId: t.area_id }
+        const task = { id: t.id, text: t.text, areaId: t.area_id, sortOrder: t.sort_order ?? 0, parentId: t.parent_id ?? null }
         if (t.done) {
             ; (completedByDate[t.date_key] ??= []).push(task)
         } else {

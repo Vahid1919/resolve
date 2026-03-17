@@ -22,6 +22,10 @@ async function req(method, path, body) {
     }
     const res = await fetch(`${API_BASE}/api${path}`, opts)
     if (res.status === 401) {
+        // Token is missing, expired, or invalidated (e.g. server secret rotated).
+        // Clear it and reload so the user is sent back to the login screen.
+        clearToken()
+        window.location.reload()
         const err = new Error('unauthenticated')
         err.status = 401
         throw err
@@ -36,12 +40,16 @@ export const api = {
     logout: () => Promise.resolve(), // JWT logout is handled client-side (clearToken)
 
     // Tasks
-    createTask: (dateKey, text, areaId) => req('POST', '/tasks', { dateKey, text, areaId }),
+    createTask: (dateKey, text, areaId, parentId = null) => req('POST', '/tasks', { dateKey, text, areaId, parentId }),
     deleteTask: (id) => req('DELETE', `/tasks/${id}`),
     deleteCompleted: (id) => req('DELETE', `/tasks/${id}/completed`),
     completeTask: (id) => req('POST', `/tasks/${id}/complete`),
     uncompleteTask: (id) => req('POST', `/tasks/${id}/uncomplete`),
     setTaskArea: (id, areaId) => req('PATCH', `/tasks/${id}/area`, { areaId }),
+    updateTaskText: (id, text) => req('PATCH', `/tasks/${id}/text`, { text }),
+    moveTaskDate: (id, toDateKey) => req('PATCH', `/tasks/${id}/date`, { toDateKey }),
+    reorderTask: (id, sortOrder) => req('PATCH', `/tasks/${id}/order`, { sortOrder }),
+    setTaskParent: (id, parentId) => req('PATCH', `/tasks/${id}/parent`, { parentId }),
 
     // Habits
     createHabit: (data) => req('POST', '/habits', data),
