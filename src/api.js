@@ -1,17 +1,31 @@
 /**
- * Thin fetch wrapper for the Resolve API.
- * Auth uses a JWT stored in localStorage, sent as Authorization: Bearer <token>.
- * In dev, VITE_API_URL is unset → relative URLs → Vite proxy → localhost:3000.
- * In production, VITE_API_URL is set to the Railway server URL.
+ * api.js — the single place that talks to the backend over HTTP.
+ *
+ * The store calls these functions; they don't touch app state themselves. Every
+ * request automatically carries the user's JWT as an "Authorization: Bearer
+ * <token>" header so the server knows who's asking.
+ *
+ * Where do requests go?
+ *   • In development, VITE_API_URL is unset, so paths are relative ("/api/...")
+ *     and Vite's dev server proxies them to the backend on localhost:3000.
+ *   • In production, VITE_API_URL is set to the deployed server's URL.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
-const TOKEN_KEY = 'resolve_token'
+const TOKEN_KEY = 'resolve_token' // the localStorage key the JWT is stored under
 
+// Tiny helpers to read/write/clear the saved token. auth.js uses these too.
 export function getToken() { return localStorage.getItem(TOKEN_KEY) }
 export function setToken(t) { localStorage.setItem(TOKEN_KEY, t) }
 export function clearToken() { localStorage.removeItem(TOKEN_KEY) }
 
+/**
+ * The one function every API call below goes through. It:
+ *   • attaches the auth token,
+ *   • JSON-encodes the body (for POST/PATCH/DELETE that send data),
+ *   • and turns a 401 (not logged in / token expired) into an automatic logout.
+ * Returns the parsed JSON response, or throws on any non-OK status.
+ */
 async function req(method, path, body) {
     const opts = { method, headers: {} }
     const token = getToken()
@@ -34,6 +48,8 @@ async function req(method, path, body) {
     return res.json()
 }
 
+// The public API surface: one method per backend endpoint, grouped by resource.
+// Each just calls req() with the right method/path/body.
 export const api = {
     me: () => req('GET', '/me'),
     sync: () => req('GET', '/sync'),

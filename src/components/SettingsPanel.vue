@@ -1,13 +1,21 @@
+<!--
+  SettingsPanel.vue — the dropdown that opens from the gear icon in the header.
+  Two things live here: the dark/light theme toggle, and managing "areas"
+  (the color-coded labels you can tag tasks/habits with).
+-->
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from "vue";
-import { useStore } from "../store/index.js";
+import { ref, nextTick } from "vue";
+import { useStore } from "../store.js";
 
+// isDark comes from the parent (App.vue owns the theme); clicking the toggle
+// emits "toggleTheme" back up so the parent flips it.
 const props = defineProps({
   isDark: { type: Boolean, required: true },
 });
 
 const emit = defineEmits(["toggleTheme", "close"]);
 
+// Area data + actions come from the shared store.
 const { areas, addArea, removeArea, updateArea } = useStore();
 
 // ── Area color presets ────────────────────────────────────────────────────────

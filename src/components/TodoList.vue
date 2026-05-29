@@ -1,12 +1,23 @@
+<!--
+  TodoList.vue — the panel on the right that shows the selected day.
+
+  It has two view modes:
+    • "day"  → shows the TaskSection and HabitSection for the chosen day.
+    • "week" → shows a compact 7-day overview around the chosen day.
+  It also owns two cross-cutting bits of UI: the area filter chips, the
+  "trim your list" toast, and the right-click "assign area" menu (which the
+  task/habit rows ask it to open via the "tag-menu" event).
+-->
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import TaskSection from "./TaskSection.vue";
 import HabitSection from "./HabitSection.vue";
-import { useStore } from "../store/index.js";
+import { useStore } from "../store.js";
+import { parseDateKey, toDateKey } from "../utils.js";
 
 const props = defineProps({
-  dateKey: { type: String, default: null },
-  readOnly: { type: Boolean, default: false },
+  dateKey: { type: String, default: null }, // which day to show ("YYYY-MM-DD")
+  readOnly: { type: Boolean, default: false }, // past days are view-only
 });
 
 const emit = defineEmits(["select-day"]);
@@ -14,7 +25,6 @@ const emit = defineEmits(["select-day"]);
 const {
   areas,
   areaColor,
-  areaName,
   getTasks,
   getCompleted,
   getHabitsForDate,
@@ -30,21 +40,23 @@ const viewMode = ref("day");
 const activeAreaFilter = ref(null);
 
 // ── Date display ──────────────────────────────────────────────────────────────
-const weekday = computed(() => {
-  if (!props.dateKey) return "";
-  const [y, m, d] = props.dateKey.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "long" });
-});
+// Human-readable pieces of the selected date for the panel header,
+// e.g. "Friday" and "May 29, 2026".
+const weekday = computed(() =>
+  props.dateKey
+    ? parseDateKey(props.dateKey).toLocaleDateString("en-US", { weekday: "long" })
+    : "",
+);
 
-const dayMonth = computed(() => {
-  if (!props.dateKey) return "";
-  const [y, m, d] = props.dateKey.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-});
+const dayMonth = computed(() =>
+  props.dateKey
+    ? parseDateKey(props.dateKey).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "",
+);
 
 // ── Week view data ────────────────────────────────────────────────────────────
 const MON_SHORT = [
@@ -63,16 +75,14 @@ const MON_SHORT = [
 ];
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function makeDateKey(dt) {
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-}
-
+// Build the 7 days of the week that contains the selected date (Monday-first),
+// each annotated with its tasks/habits and done-counts for the summary rows.
 const weekDays = computed(() => {
   if (!props.dateKey) return [];
-  const [y, m, d] = props.dateKey.split("-").map(Number);
-  const sel = new Date(y, m - 1, d);
-  const dow = sel.getDay();
+  const sel = parseDateKey(props.dateKey);
+  const dow = sel.getDay(); // 0 = Sun … 6 = Sat
   const mon = new Date(sel);
+  // Walk back to Monday (Sunday counts as the last day of the week here).
   mon.setDate(sel.getDate() - (dow === 0 ? 6 : dow - 1));
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -80,7 +90,7 @@ const weekDays = computed(() => {
   return Array.from({ length: 7 }, (_, i) => {
     const dt = new Date(mon);
     dt.setDate(mon.getDate() + i);
-    const dk = makeDateKey(dt);
+    const dk = toDateKey(dt);
     const filt = activeAreaFilter.value;
 
     const allTasks = getTasks(dk) || [];
@@ -118,12 +128,12 @@ const weekRangeLabel = computed(() => {
   return `${f.monthShort} ${f.dateNum} – ${l.monthShort} ${l.dateNum}`;
 });
 
+// Rough "Week N of the year" label for the week-view header.
 const weekNumber = computed(() => {
   if (!props.dateKey) return "";
-  const [y, m, d] = props.dateKey.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  const startOfYear = new Date(y, 0, 1);
-  const dayOfYear = Math.floor((dt - startOfYear) / 86400000);
+  const dt = parseDateKey(props.dateKey);
+  const startOfYear = new Date(dt.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((dt - startOfYear) / 86400000); // ms per day
   return `Week ${Math.ceil((dayOfYear + startOfYear.getDay() + 1) / 7)}`;
 });
 
@@ -133,6 +143,9 @@ function goToDay(day) {
 }
 
 // ── Toast notification ────────────────────────────────────────────────────────
+// A gentle nudge: if the selected day ever has more than 5 items, briefly show
+// a "consider trimming your list" message. `watch` re-runs the count function
+// whenever the underlying data changes.
 const toastMsg = ref(null);
 let toastTimer = null;
 
@@ -154,13 +167,17 @@ watch(
 );
 
 // ── Right-click area context menu ─────────────────────────────────────────────
+// Task/habit rows emit "tag-menu" on right-click. We pop up a little menu at the
+// cursor to assign an area. `tagMenu` holds what was clicked and where to draw it.
 const tagMenu = ref(null);
 
 function openTagMenu(type, id, event) {
+  // Right-clicking the same row again closes the menu (toggle behavior).
   if (tagMenu.value?.type === type && tagMenu.value?.id === id) {
     tagMenu.value = null;
     return;
   }
+  // Clamp the position so the menu never spills off the right/bottom edges.
   const x = Math.min(event.clientX, window.innerWidth - 160);
   const y = Math.min(
     event.clientY,

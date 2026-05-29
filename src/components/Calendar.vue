@@ -1,30 +1,43 @@
+<!--
+  Calendar.vue — the month grid on the left side of the app.
+
+  What it does:
+    • Shows one month at a time; arrows move between months.
+    • Tints each day by how complete it is (red→amber→green) via the store.
+    • Shows up to 4 dots on a day to hint how many tasks it has.
+    • Lets you click (or arrow-key) to select a day, and drag a task onto a day
+      to move it there.
+  It announces the chosen day to the parent (App.vue) with the "select" event.
+-->
 <script setup>
 import { ref, computed, onMounted } from "vue";
-import { useStore } from "../store/index.js";
-import { moveTaskToDate } from "../store/tasks.js";
+import { useStore, moveTaskToDate } from "../store.js";
+import { toDateKey } from "../utils.js";
 
+// The selected day ("YYYY-MM-DD") is owned by the parent (App.vue) and passed in
+// as a prop, so the calendar's highlight always matches the day the app is
+// showing — even when the day was picked elsewhere (e.g. from the week view).
+const props = defineProps({
+  selected: { type: String, default: null },
+});
+
+// Emitted as ("select", dateKey, isPast) whenever the user picks a day.
 const emit = defineEmits(["select"]);
 
+// calendarColorForDate → the day's tint; tasksByDate → used for the task dots.
 const { calendarColorForDate, tasksByDate } = useStore();
 
 // ── Today reference ───────────────────────────────────────────────────────────
 const today = new Date();
-today.setHours(0, 0, 0, 0);
-
-function makeDateKey(y, m, d) {
-  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-const todayKey = makeDateKey(
-  today.getFullYear(),
-  today.getMonth(),
-  today.getDate(),
-);
+today.setHours(0, 0, 0, 0); // midnight, so we can compare whole days cleanly
+const todayKey = toDateKey(today);
 
 // ── View state ────────────────────────────────────────────────────────────────
+// Which month is on screen — independent of which day is selected.
 const viewYear = ref(today.getFullYear());
 const viewMonth = ref(today.getMonth());
-const selectedKey = ref(todayKey);
 
+// On first load, tell the parent that today is the selected day.
 onMounted(() => emit("select", todayKey));
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -71,19 +84,19 @@ function nextMonth() {
 function jumpToToday() {
   viewYear.value = today.getFullYear();
   viewMonth.value = today.getMonth();
-  selectedKey.value = todayKey;
   emit("select", todayKey, false);
 }
 
 // ── Day helpers ───────────────────────────────────────────────────────────────
+// The dateKey for day-number `d` within the month currently on screen.
 function keyForDay(d) {
-  return makeDateKey(viewYear.value, viewMonth.value, d);
+  return toDateKey(new Date(viewYear.value, viewMonth.value, d));
 }
 function isToday(d) {
   return keyForDay(d) === todayKey;
 }
 function isSelected(d) {
-  return keyForDay(d) === selectedKey.value;
+  return keyForDay(d) === props.selected;
 }
 function isPast(d) {
   return new Date(viewYear.value, viewMonth.value, d) < today;
@@ -105,14 +118,19 @@ function cellAriaLabel(d) {
 }
 
 function selectDay(d, past = false) {
-  const key = keyForDay(d);
-  selectedKey.value = key;
-  emit("select", key, past);
+  // Don't track the selection here — emit it up to App.vue, which passes it
+  // back down via the `selected` prop. That keeps one source of truth.
+  emit("select", keyForDay(d), past);
 }
 
-// ── Task drag-to-calendar drop ────────────────────────────────────────────────────────────
+// ── Task drag-to-calendar drop ─────────────────────────────────────────────────
+// A task being dragged carries two pieces of data ("task-id" and "from-date"),
+// set in TaskSection.vue when the drag starts. Dropping it on a day moves the
+// task to that day. `dragOverDay` just tracks which cell to highlight.
 const dragOverDay = ref(null);
 
+// Only react to task drags (ignore any other dragged content). Calling
+// preventDefault() on dragover is what tells the browser "a drop is allowed here".
 function onDayDragOver(e, d) {
   if (!e.dataTransfer.types.includes("task-id")) return;
   e.preventDefault();
