@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/*
+  style.css — global styles and the color theme.
+
+  How theming works:
+    • All colors are CSS variables (e.g. --bg, --text, --accent) defined below.
+    • There are two sets: one under [data-theme="dark"] and one under
+      [data-theme="light"]. useTheme() (composables.js) sets the data-theme
+      attribute on <html>, which swaps every color at once.
+    • Components reference these via Tailwind's arbitrary-value syntax, e.g.
+      `bg-(--surface)` or `text-(--accent)`.
+  Below the tokens are the base styles, keyframe animations, and the
+  enter/leave transitions used by <Transition>/<TransitionGroup> in components.
+*/
+
 /* ── Theme tokens ───────────────────────────────── */
 :root,
 [data-theme="dark"] {

@@ -1,5 +1,10 @@
+<!--
+  AuthScreen.vue — the login screen.
+  Shown by App.vue whenever nobody is signed in. It's just a centered card with
+  one button that starts Google sign-in (see signInWithGoogle in auth.js).
+-->
 <script setup>
-import { signInWithGoogle } from "../store/auth.js";
+import { signInWithGoogle } from "../auth.js";
 </script>
 
 <template>

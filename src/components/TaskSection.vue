@@ -1,14 +1,25 @@
+<!--
+  TaskSection.vue — the "Tasks" block shown in the day view.
+
+  Features packed in here:
+    • An add form with random suggestions, area tagging, and Tab-to-make-subtask.
+    • Inline editing (double-click a task), with Tab / Shift-Tab to (un)indent.
+    • Drag-and-drop reordering, plus a drop zone to move a task to the very end.
+    • A completed-tasks list below the active one.
+  All data changes go through the store functions; this file is just the UI.
+-->
 <script setup>
 import { ref, computed, nextTick } from "vue";
-import { useStore } from "../store/index.js";
+import { useStore } from "../store.js";
+import { sample } from "../utils.js";
 
 const props = defineProps({
-  dateKey: { type: String, required: true },
-  readOnly: { type: Boolean, default: false },
-  activeAreaFilter: { type: Number, default: null },
+  dateKey: { type: String, required: true },     // the day these tasks belong to
+  readOnly: { type: Boolean, default: false },    // past days can't be edited
+  activeAreaFilter: { type: Number, default: null }, // null = show all areas
 });
 
-const emit = defineEmits(["tag-menu"]);
+const emit = defineEmits(["tag-menu"]); // ask the parent to open the area menu
 
 const {
   getTasks,
@@ -23,7 +34,6 @@ const {
   setTaskParent,
   areas,
   areaColor,
-  areaName,
 } = useStore();
 
 // ── Filtered lists ────────────────────────────────────────────────────────────
@@ -41,6 +51,7 @@ const completedTasks = computed(() => {
 });
 
 // ── Add form ──────────────────────────────────────────────────────────────────
+// A pool of example tasks; openForm() picks 4 at random as one-tap suggestions.
 const TASK_POOL = [
   "Review emails",
   "Go for a walk",
@@ -58,15 +69,6 @@ const TASK_POOL = [
   "Organize desktop",
   "Review notes",
 ];
-
-function sample(arr, n) {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(0, n);
-}
 
 const showForm = ref(false);
 const newText = ref("");
@@ -153,6 +155,10 @@ function cancelEdit() {
   editingId.value = null;
 }
 
+// Keyboard shortcuts while editing a task inline:
+//   Enter → save, Escape → cancel,
+//   Tab → indent (become a subtask of the task above),
+//   Shift+Tab → outdent (back to a top-level task).
 function handleEditKeydown(e, task, idx) {
   if (e.key === "Enter") {
     e.preventDefault();
@@ -167,6 +173,8 @@ function handleEditKeydown(e, task, idx) {
   if (e.key === "Tab" && !e.shiftKey) {
     e.preventDefault();
     if (idx > 0) {
+      // Attach to the task above — to ITS parent if it's already a subtask,
+      // otherwise to the task above itself.
       const above = activeTasks.value[idx - 1];
       const pid = above.parentId ?? above.id;
       if (pid !== task.id && pid !== task.parentId) {
@@ -180,9 +188,13 @@ function handleEditKeydown(e, task, idx) {
 }
 
 // ── Drag-to-reorder ───────────────────────────────────────────────────────────
+// `draggedId` = the row being dragged; `dragOverId` = the row (or "__end__"
+// drop zone) currently hovered, used to draw the insertion indicator.
 const draggedId = ref(null);
 const dragOverId = ref(null);
 
+// When a drag begins, stash the task id and its day on the drag event. Both this
+// component (reorder) and Calendar.vue (move to another day) read these back.
 function onDragStart(e, task) {
   draggedId.value = task.id;
   e.dataTransfer.effectAllowed = "move";

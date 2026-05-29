@@ -1,22 +1,32 @@
+<!--
+  App.vue — the root component and overall page layout.
+
+  Responsibilities:
+    • Decide what to show based on login state: the login screen, a brief
+      loading splash, or the main app.
+    • Render the header (app name, live clock, profile menu, settings).
+    • Lay out the two main panels side by side: the Calendar (left) and the
+      TodoList for the selected day (right).
+    • On startup, figure out who's signed in and download their data.
+-->
 <script setup>
 import { ref, onMounted, onUnmounted } from "vue";
 import Calendar from "./components/Calendar.vue";
 import TodoList from "./components/TodoList.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 import AuthScreen from "./components/AuthScreen.vue";
-import { useClock } from "./composables/useClock.js";
-import { useTheme } from "./composables/useTheme.js";
-import { user, authLoading, loadUser, logout } from "./store/auth.js";
-import { syncAll } from "./store/index.js";
+import { useClock, useTheme } from "./composables.js";
+import { user, authLoading, loadUser, logout } from "./auth.js";
+import { syncAll } from "./store.js";
+import { toDateKey } from "./utils.js";
 
-const { time: clockTime } = useClock();
-const { isDark, toggleTheme } = useTheme();
+const { time: clockTime } = useClock();   // live "hh:mm:ss" string for the header
+const { isDark, toggleTheme } = useTheme(); // dark/light mode
 
 // ── Date selection ────────────────────────────────────────────────────────────
-const today = new Date();
-const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-
-const selectedDate = ref(todayKey);
+// The Calendar tells us which day the user picked. We keep it here and pass it
+// down to the TodoList. Past days are shown read-only.
+const selectedDate = ref(toDateKey(new Date())); // start on today
 const isPastDate = ref(false);
 
 function onDateSelect(dateKey, isPast) {
@@ -54,12 +64,16 @@ function closeOnEscape(e) {
   if (e.key === "Escape") settingsOpen.value = false;
 }
 
+// Runs once when the app first appears on screen.
 onMounted(async () => {
+  // Close dropdowns when clicking outside them or pressing Escape.
   document.addEventListener("mousedown", closeOnOutsideClick);
   document.addEventListener("keydown", closeOnEscape);
 
-  await loadUser()
-  if (user.value) await syncAll().catch(() => {})
+  // Startup data flow: first work out who's signed in (reads the token), then,
+  // if someone is, download all their tasks/habits/areas in one request.
+  await loadUser();
+  if (user.value) await syncAll().catch(() => {});
 });
 onUnmounted(() => {
   document.removeEventListener("mousedown", closeOnOutsideClick);
@@ -220,8 +234,12 @@ onUnmounted(() => {
       role="main"
       class="flex flex-1 gap-7 p-8 items-start max-w-350 w-full mx-auto max-md:flex-col max-md:p-5"
     >
-      <Calendar @select="onDateSelect" />
-      <TodoList :dateKey="selectedDate" :readOnly="isPastDate" />
+      <Calendar :selected="selectedDate" @select="onDateSelect" />
+      <TodoList
+        :dateKey="selectedDate"
+        :readOnly="isPastDate"
+        @select-day="onDateSelect"
+      />
     </main>
   </div>
 </template>

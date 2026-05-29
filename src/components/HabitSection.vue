@@ -1,14 +1,24 @@
+<!--
+  HabitSection.vue — the "Habits" block shown in the day view.
+
+  Habits are recurring (daily / weekly / specific weekdays). For the selected
+  day this shows the habits that apply, lets you check them off, and offers an
+  add form. Deleting a habit gives two choices: skip just this day, or end it
+  from this day onward (see the popover). The recurrence rules themselves live
+  in store.js (isApplicable); this file is the UI.
+-->
 <script setup>
 import { ref, computed, nextTick } from "vue";
-import { useStore } from "../store/index.js";
+import { useStore } from "../store.js";
+import { sample } from "../utils.js";
 
 const props = defineProps({
-  dateKey: { type: String, required: true },
-  readOnly: { type: Boolean, default: false },
-  activeAreaFilter: { type: Number, default: null },
+  dateKey: { type: String, required: true },     // the day we're viewing
+  readOnly: { type: Boolean, default: false },    // past days can't be edited
+  activeAreaFilter: { type: Number, default: null }, // null = show all areas
 });
 
-const emit = defineEmits(["tag-menu"]);
+const emit = defineEmits(["tag-menu"]); // ask the parent to open the area menu
 
 const {
   getHabitsForDate,
@@ -20,7 +30,6 @@ const {
   addHabit,
   areas,
   areaColor,
-  areaName,
 } = useStore();
 
 // ── Filtered habits ───────────────────────────────────────────────────────────
@@ -37,10 +46,13 @@ function toggleHabit(id) {
 }
 
 // ── Habit delete popover ──────────────────────────────────────────────────────
-const deleteMenuId = ref(null);
+// Deleting a recurring habit is ambiguous, so we offer two options:
+//   • "This day only"      → skip it just today (skipHabitOnDate).
+//   • "This day & future"  → stop it from today onward (removeHabitFromDate).
+const deleteMenuId = ref(null); // id of the habit whose menu is open, or null
 
 function openDeleteMenu(id) {
-  deleteMenuId.value = deleteMenuId.value === id ? null : id;
+  deleteMenuId.value = deleteMenuId.value === id ? null : id; // toggle
 }
 function deleteThisDay(id) {
   skipHabitOnDate(props.dateKey, id);
@@ -70,6 +82,7 @@ function cadenceLabel(habit) {
 }
 
 // ── Add form ──────────────────────────────────────────────────────────────────
+// Example habits; openForm() shows 4 at random as one-tap suggestions.
 const HABIT_POOL = [
   "Morning meditation",
   "Evening walk",
@@ -87,15 +100,6 @@ const HABIT_POOL = [
   "10k steps",
   "Journaling",
 ];
-
-function sample(arr, n) {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(0, n);
-}
 
 const showForm = ref(false);
 const newText = ref("");
